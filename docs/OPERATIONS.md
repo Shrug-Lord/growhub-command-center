@@ -4,6 +4,11 @@ Docker Compose is the supported first-ship deployment on Windows, macOS, and
 Linux, including Raspberry Pi. The images support AMD64 and ARM64; a Raspberry
 Pi is not required.
 
+For a first deployment, including prerequisite installation, host addressing,
+administrator setup, CE device connection, verification, and troubleshooting,
+start with the [installation guide](INSTALL.md). This document covers ongoing
+administration after Command Center is running.
+
 ## Requirements
 
 - Git

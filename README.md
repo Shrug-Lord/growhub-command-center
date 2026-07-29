@@ -49,6 +49,10 @@ cd growhub-command-center
 npm run compose:up
 ```
 
+For prerequisite installation, host addressing, first-run administrator setup,
+CE device connection, verification, and troubleshooting, follow the complete
+[installation guide](docs/INSTALL.md).
+
 Open [http://localhost](http://localhost) on the Docker host. Use
 `http://growhub.local` when the host is named `growhub` and your network resolves
 local hostnames; otherwise use the host's LAN IP address. The UI/API uses port
@@ -125,6 +129,7 @@ with SQLite persistence and server-owned MQTT.js integration. See
 
 ## Documentation
 
+- [Installation](docs/INSTALL.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [CE ship plan and acceptance criteria](docs/SHIP-PLAN.md)
 - [Operations](docs/OPERATIONS.md)
