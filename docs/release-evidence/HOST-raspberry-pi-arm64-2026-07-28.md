@@ -12,7 +12,7 @@ Status: passed
 - Node.js/npm: 24.18.0 / 11.16.0
 - Docker Engine/Compose: 29.6.2 / 5.3.1
 - Command Center version: 0.1.0
-- Command Center commit: recorded by the follow-up publication evidence commit
+- Command Center commit: `e86756e09a7646caf50c0987d3c17833dd8b839e`
 - CE device: Growhub+ running firmware 1.1.0C
 
 ## Exact Source

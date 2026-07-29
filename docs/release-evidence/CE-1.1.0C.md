@@ -2,7 +2,7 @@
 
 Status: passed
 
-- Command Center commit: recorded by the follow-up publication evidence commit
+- Command Center commit: `e86756e09a7646caf50c0987d3c17833dd8b839e`
 - CE firmware version: 1.1.0C
 - CE firmware commit: `15dcf80807e8c9c6cd9faaf49ded4d5175c407b1`
 - Test-session base: pre-publication Command Center candidate represented by the

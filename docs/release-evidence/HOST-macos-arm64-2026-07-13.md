@@ -10,7 +10,7 @@ Status: passed
 - Docker Compose: 5.3.0
 - Node.js/npm: 24.18.0 / 11.16.0
 - Command Center version: 0.1.0
-- Command Center commit: recorded by the follow-up publication evidence commit
+- Command Center commit: `e86756e09a7646caf50c0987d3c17833dd8b839e`
 - Deployment project: isolated `growhub-nonpi-release`
 - HTTP/MQTT test ports: 18082/11885
 - Backup SHA-256:

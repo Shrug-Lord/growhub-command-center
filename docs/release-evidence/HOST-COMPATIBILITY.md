@@ -2,7 +2,7 @@
 
 Status: pending
 
-- Command Center commit: recorded by the follow-up publication evidence commit
+- Command Center commit: `e86756e09a7646caf50c0987d3c17833dd8b839e`
 - Reference Raspberry Pi: passed
 - Docker Engine/Compose: 29.6.2 / 5.3.1 on Linux ARM64
 - Tested by: project maintainer with Codex-assisted execution
