@@ -15,25 +15,46 @@ function temporaryDirectory(t) {
   return directory;
 }
 
-function waitForOutput(stream, expected) {
+function waitForOutput(child, expected, timeoutMs = 5_000) {
   return new Promise((resolve, reject) => {
     let output = '';
+    let errorOutput = '';
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for child output: ${expected.trim()}`));
+    }, timeoutMs);
     function onData(chunk) {
       output += chunk.toString();
       if (!output.includes(expected)) return;
       cleanup();
       resolve(output);
     }
+    function onErrorData(chunk) {
+      errorOutput += chunk.toString();
+    }
     function onError(error) {
       cleanup();
       reject(error);
     }
-    function cleanup() {
-      stream.off('data', onData);
-      stream.off('error', onError);
+    function onExit(code, signal) {
+      cleanup();
+      reject(
+        new Error(
+          `Child exited before producing expected output (code=${code}, signal=${signal}): ${errorOutput.trim()}`,
+        ),
+      );
     }
-    stream.on('data', onData);
-    stream.on('error', onError);
+    function cleanup() {
+      clearTimeout(timeout);
+      child.stdout.off('data', onData);
+      child.stderr.off('data', onErrorData);
+      child.off('error', onError);
+      child.off('exit', onExit);
+    }
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onErrorData);
+    child.on('error', onError);
+    child.on('exit', onExit);
   });
 }
 
@@ -66,14 +87,15 @@ test('operating system releases app-data ownership after process death', async (
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   });
 
-  await waitForOutput(child.stdout, 'locked\n');
+  await waitForOutput(child, 'locked\n');
   assert.throws(
     () => acquireAppDataLock(directory),
     (error) => error.code === 'app_data_in_use',
   );
 
+  const childExit = once(child, 'exit');
   child.kill('SIGKILL');
-  await once(child, 'exit');
+  await childExit;
 
   const recovered = acquireAppDataLock(directory);
   recovered.release();
