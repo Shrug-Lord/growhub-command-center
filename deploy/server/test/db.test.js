@@ -317,7 +317,7 @@ test('migration checksums are stable across platform line endings', (t) => {
   const migrationsDir = copyMigrations(t);
   const migrationPath = path.join(migrationsDir, '001_runtime_foundation.sql');
   openDatabase(dbPath, { migrationsDir }).close();
-  fs.writeFileSync(migrationPath, fs.readFileSync(migrationPath, 'utf8').replace(/\n/g, '\r\n'));
+  fs.writeFileSync(migrationPath, fs.readFileSync(migrationPath, 'utf8').replace(/\r?\n/g, '\r\n'));
 
   const reopened = openDatabase(dbPath, { migrationsDir });
   assert.deepEqual(reopened.migrationState, { currentVersion: 5, appliedCount: 0 });

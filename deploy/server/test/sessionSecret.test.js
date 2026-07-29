@@ -18,7 +18,9 @@ test('session secret is persistent, restrictive, and domain-separates token hash
   const firstStore = createSessionSecretStore(appDataDir);
   const secret = firstStore.ensure();
   assert.equal(secret.length, 32);
-  assert.equal(fs.statSync(firstStore.filename).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(firstStore.filename).mode & 0o777, 0o600);
+  }
 
   const reloaded = createSessionSecretStore(appDataDir).load();
   assert.deepEqual(reloaded, secret);

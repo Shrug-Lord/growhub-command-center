@@ -130,7 +130,9 @@ test('first-run setup, cookie sessions, CSRF, restart, credential changes, and l
   assert.equal(configured.response.headers.get('access-control-allow-origin'), null);
   assert.equal(configured.response.headers.get('x-powered-by'), null);
   const secretPath = path.join(appDataDir, SESSION_SECRET_FILE);
-  assert.equal(fs.statSync(secretPath).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(secretPath).mode & 0o777, 0o600);
+  }
   assert.equal(
     instance.database.stmts.getAdmin.get().password_verifier.includes(ORIGINAL_PASSWORD),
     false,

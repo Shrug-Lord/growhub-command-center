@@ -39,13 +39,15 @@ test('development reset refuses to run while the app-data directory is owned', (
   const dbPath = path.join(appDataDir, 'growhub.db');
   fs.writeFileSync(dbPath, 'bench data');
   const lock = acquireAppDataLock(appDataDir);
-  t.after(() => lock.release());
-
-  assert.throws(
-    () => resetAppData({ appDataDir, dbPath }),
-    (error) => error.code === 'app_data_in_use',
-  );
-  assert.equal(fs.readFileSync(dbPath, 'utf8'), 'bench data');
+  try {
+    assert.throws(
+      () => resetAppData({ appDataDir, dbPath }),
+      (error) => error.code === 'app_data_in_use',
+    );
+    assert.equal(fs.readFileSync(dbPath, 'utf8'), 'bench data');
+  } finally {
+    lock.release();
+  }
 });
 
 test('development reset refuses database paths outside app data', (t) => {
