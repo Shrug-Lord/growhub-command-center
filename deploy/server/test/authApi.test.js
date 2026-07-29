@@ -20,10 +20,8 @@ function loggerStub() {
   return { debug() {}, error() {}, info() {}, warn() {} };
 }
 
-function temporaryDirectory(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'growhub-auth-api-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  return directory;
+function temporaryDirectory() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'growhub-auth-api-'));
 }
 
 async function startInstance(appDataDir, clock, env = {}) {
@@ -106,12 +104,13 @@ async function login(instance, username, password, headers = {}) {
 }
 
 test('first-run setup, cookie sessions, CSRF, restart, credential changes, and logout work end to end', async (t) => {
-  const appDataDir = temporaryDirectory(t);
+  const appDataDir = temporaryDirectory();
   let now = Date.parse('2026-07-13T12:00:00.000Z');
   const clock = () => now;
   let instance = await startInstance(appDataDir, clock);
   t.after(async () => {
     if (instance) await instance.close();
+    fs.rmSync(appDataDir, { recursive: true, force: true });
   });
 
   const live = await request(instance, 'GET', '/health/live');
@@ -279,10 +278,13 @@ test('first-run setup, cookie sessions, CSRF, restart, credential changes, and l
 });
 
 test('login rate limits use generic failures and retain no submitted username', async (t) => {
-  const appDataDir = temporaryDirectory(t);
+  const appDataDir = temporaryDirectory();
   const clock = () => Date.parse('2026-07-13T12:00:00.000Z');
   const instance = await startInstance(appDataDir, clock);
-  t.after(() => instance.close());
+  t.after(async () => {
+    await instance.close();
+    fs.rmSync(appDataDir, { recursive: true, force: true });
+  });
   await setup(instance);
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -307,11 +309,14 @@ test('login rate limits use generic failures and retain no submitted username', 
 });
 
 test('HTTPS behind an explicitly trusted proxy adds Secure to the host-only cookie', async (t) => {
-  const appDataDir = temporaryDirectory(t);
+  const appDataDir = temporaryDirectory();
   const instance = await startInstance(appDataDir, () => Date.parse('2026-07-13T12:00:00.000Z'), {
     TRUSTED_PROXIES: '127.0.0.1',
   });
-  t.after(() => instance.close());
+  t.after(async () => {
+    await instance.close();
+    fs.rmSync(appDataDir, { recursive: true, force: true });
+  });
   const proxyHeaders = {
     'X-Forwarded-For': '192.0.2.10',
     'X-Forwarded-Proto': 'https',
@@ -324,10 +329,13 @@ test('HTTPS behind an explicitly trusted proxy adds Secure to the host-only cook
 });
 
 test('successful login upgrades supported password parameters and idle sessions expire', async (t) => {
-  const appDataDir = temporaryDirectory(t);
+  const appDataDir = temporaryDirectory();
   let now = Date.parse('2026-07-13T12:00:00.000Z');
   const instance = await startInstance(appDataDir, () => now);
-  t.after(() => instance.close());
+  t.after(async () => {
+    await instance.close();
+    fs.rmSync(appDataDir, { recursive: true, force: true });
+  });
   await setup(instance);
 
   const weakVerifier = await hashPassword(ORIGINAL_PASSWORD, {
