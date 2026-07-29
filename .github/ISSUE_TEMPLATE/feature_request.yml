@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a concrete Command Center capability
+title: '[Feature]: '
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Operator workflow
+      description: Describe the problem and the steps an operator needs to complete.
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: Firmware contract or ownership impact
+      description: Note whether CE firmware must publish, persist, validate, or acknowledge new state.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true

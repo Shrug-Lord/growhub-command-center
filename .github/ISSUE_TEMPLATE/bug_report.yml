@@ -1,0 +1,60 @@
+name: Bug report
+description: Report reproducible Command Center behavior
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include passwords, cookies, CSRF values, MQTT credentials, private
+        addresses, or unredacted diagnostics. Report security issues privately
+        through the repository Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Command Center version
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: CE firmware version
+      placeholder: 1.1.0C
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Docker host
+      options:
+        - Linux AMD64
+        - Linux ARM64 or Raspberry Pi
+        - macOS
+        - Windows
+        - Native Node development
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Add redacted logs or diagnostics details that help reproduce the issue.

@@ -1,0 +1,13 @@
+dist
+node_modules
+deploy/server/node_modules
+deploy/server/data
+backups
+output
+playwright-report
+test-results
+package-lock.json
+deploy/server/package-lock.json
+docs
+CONTEXT.md
+CLAUDE.md

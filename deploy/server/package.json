@@ -1,0 +1,35 @@
+{
+  "name": "@growhub/command-center-server",
+  "version": "0.1.0",
+  "description": "Growhub Command Center API, firmware mirror, and action engine",
+  "license": "MIT",
+  "author": "Shrug-Lord",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shrug-Lord/growhub-command-center.git",
+    "directory": "deploy/server"
+  },
+  "homepage": "https://github.com/Shrug-Lord/growhub-command-center#readme",
+  "bugs": {
+    "url": "https://github.com/Shrug-Lord/growhub-command-center/issues"
+  },
+  "private": true,
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=24.7 <25",
+    "npm": ">=11"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "reset:dev": "node src/resetAppData.js",
+    "test": "node --test --test-concurrency=1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^4.18.3",
+    "mqtt": "^5.3.4"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}

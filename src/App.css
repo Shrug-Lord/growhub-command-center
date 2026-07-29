@@ -1,0 +1,92 @@
+/* Additional component-specific styles can go here */
+
+:root {
+  --bg: #f9fafb;
+  --panel: #ffffff;
+  --panel-2: #f3f4f6;
+  --text: #0f172a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+}
+
+:root[data-theme='dark'],
+.theme-dark {
+  --bg: #0f172a;
+  --panel: #111827;
+  --panel-2: #1f2937;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --border: #1f2937;
+}
+
+:root[data-theme='forest'],
+.theme-forest {
+  --bg: #0f2018;
+  --panel: #13271c;
+  --panel-2: #1b3325;
+  --text: #e8f5e9;
+  --muted: #9ec5a5;
+  --border: #1f3a2a;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.theme-light .bg-white,
+.theme-dark .bg-white,
+.theme-forest .bg-white {
+  background-color: var(--panel);
+}
+
+.theme-light .bg-gray-50,
+.theme-dark .bg-gray-50,
+.theme-forest .bg-gray-50 {
+  background-color: var(--panel-2);
+}
+
+.theme-dark .text-gray-900,
+.theme-forest .text-gray-900 {
+  color: var(--text);
+}
+
+.theme-dark .text-gray-800,
+.theme-forest .text-gray-800,
+.theme-dark .text-gray-700,
+.theme-forest .text-gray-700 {
+  color: var(--text);
+}
+
+.theme-dark .text-gray-600,
+.theme-forest .text-gray-600 {
+  color: var(--muted);
+}
+
+.theme-dark input,
+.theme-forest input,
+.theme-dark select,
+.theme-forest select,
+.theme-dark textarea,
+.theme-forest textarea {
+  background-color: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.theme-dark input::placeholder,
+.theme-forest input::placeholder,
+.theme-dark textarea::placeholder,
+.theme-forest textarea::placeholder {
+  color: var(--muted);
+}
+
+.theme-dark .border-gray-200,
+.theme-forest .border-gray-200 {
+  border-color: var(--border);
+}
+
+.theme-dark .border-gray-300,
+.theme-forest .border-gray-300 {
+  border-color: var(--border);
+}

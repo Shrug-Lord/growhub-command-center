@@ -1,0 +1,166 @@
+# Operations
+
+Docker Compose is the supported first-ship deployment on Windows, macOS, and
+Linux, including Raspberry Pi. The images support AMD64 and ARM64; a Raspberry
+Pi is not required.
+
+## Requirements
+
+- Git
+- Node.js 24 LTS with npm 11 or newer
+- Docker Desktop, or Docker Engine with the Compose plugin
+
+Verify them from PowerShell, Terminal, or a shell:
+
+```bash
+git --version
+node --version
+npm --version
+docker version
+docker compose version
+```
+
+## Install
+
+```bash
+git clone https://github.com/Shrug-Lord/growhub-command-center.git
+cd growhub-command-center
+npm run compose:up
+```
+
+The image build installs locked dependencies and builds the UI inside the
+server image. It starts one Command Center server, SQLite in a named volume,
+and a persistent Mosquitto broker.
+
+Open `http://growhub.local` when the Docker host is named `growhub` and your
+network resolves local hostnames. Local-name discovery varies by operating
+system and router, so `http://<host-ip>` is the reliable fallback. Open
+`http://localhost` from the Docker host itself. First-run administrator setup
+is completed entirely in the UI.
+
+Check deployment state without opening the UI:
+
+```bash
+docker compose -f deploy/compose.yml ps
+docker compose -f deploy/compose.yml logs --tail=200 server
+docker compose -f deploy/compose.yml logs --tail=200 mosquitto
+```
+
+`GET /health/live` checks the HTTP process. `GET /health/ready` verifies that
+configuration, app-data ownership, migrations, and SQLite startup completed.
+MQTT outages are shown separately in authenticated diagnostics.
+
+## Ports and Hostname
+
+The defaults are host port 80 for the UI/API and host port 1883 for CE firmware
+MQTT. If port 80 is occupied, copy `deploy/.env.example` to `deploy/.env` and
+change the UI port:
+
+```dotenv
+GROWHUB_HTTP_PORT=8080
+```
+
+Then use `http://growhub.local:8080` or `http://<host-ip>:8080`.
+
+Configure each CE firmware device to use the Command Center host name or LAN IP
+as its MQTT broker on port 1883. The browser never connects to MQTT directly.
+The bundled broker is anonymous because CE 1.1.0C does not support MQTT broker
+credentials. Keep port 1883 on a trusted LAN and never forward it from an
+internet router.
+
+## Update
+
+The update command requires a clean Git checkout. It creates a backup first,
+fast-forwards the checkout, reinstalls locked tooling, pulls service images,
+rebuilds Command Center, starts the stack, and waits for readiness:
+
+```bash
+npm run compose:update
+```
+
+Pre-update archives are written under `backups/pre-update/`. The command stops
+if local source changes are present or Git cannot fast-forward. It never resets
+or overwrites local source changes. `--skip-backup` exists for recovery cases,
+but is not the normal update path:
+
+```bash
+npm run compose:update -- --skip-backup
+```
+
+## Backup
+
+Create a timestamped restore archive:
+
+```bash
+npm run compose:backup
+```
+
+The command briefly stops Command Center and Mosquitto so SQLite, the persistent
+session secret, and retained MQTT state are mutually consistent. It restarts
+only the services that were running. The archive is stored under `backups/` and
+contains a versioned manifest, SHA-256 checksums, the complete server-data
+volume, and the complete bundled-broker volume.
+
+Choose another destination when the backup must live off the Docker host:
+
+```bash
+npm run compose:backup -- --output /path/to/backups
+```
+
+A diagnostics JSON export is not a restore backup. It intentionally contains
+troubleshooting evidence but no SQLite database, session secret, or broker
+persistence database.
+
+## Restore
+
+Restore overwrites both current named volumes. It validates archive paths,
+format, and checksums before stopping services, and creates a pre-restore safety
+backup by default:
+
+```bash
+npm run compose:restore -- backups/growhub-backup-YYYY-MM-DD_HH-MM-SS.tar.gz --yes
+```
+
+The restored stack is started and checked for readiness before the command
+returns. If restore fails after replacement begins, leave the services stopped,
+inspect the reported error, and restore the safety archive from
+`backups/pre-restore/`. The advanced `--skip-safety-backup` flag should be used
+only when current volumes are known to be unusable.
+
+## Reset
+
+The development/credential-recovery reset removes only Command Center app data,
+including the database, admin credential, sessions, and persistent session
+secret. It deliberately preserves Mosquitto retained state so CE devices can
+repopulate the new mirror:
+
+```bash
+npm run compose:backup
+npm run compose:reset -- --yes
+```
+
+The reset refuses to run without `--yes`. Afterward, open the UI and complete
+first-run administrator setup again.
+
+## External Broker
+
+An external MQTT broker is an advanced deployment option for an existing home
+automation or managed MQTT installation. It can centralize broker monitoring,
+TLS, credentials, or network routing, but it also moves availability,
+persistence, access control, and backup responsibility outside Command Center.
+Most installations should keep the bundled broker.
+
+Set `MQTT_URL` and a broker-unique `MQTT_CLIENT_ID` in ignored
+`deploy/.env`. Credentials embedded in `MQTT_URL` are accepted but never shown
+in diagnostics or logs. The bundled broker still starts under the reference
+Compose file but is not used by the server. Command Center backup archives cover
+only the bundled broker; external retained state must be backed up and restored
+using that broker's own procedure.
+
+## Remote Access
+
+Plain HTTP is supported on a trusted local network. For access away from home,
+use a VPN into the LAN. An HTTPS reverse proxy is also possible, but it must
+forward to the single Command Center server and must not expose MQTT publicly.
+Configure `TRUSTED_PROXIES` only with the exact proxy IP/CIDR entries you control.
+Do not expose port 80 or 1883 directly to the internet.
