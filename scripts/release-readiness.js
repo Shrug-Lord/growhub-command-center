@@ -77,6 +77,14 @@ function main() {
         'Tested at',
       ],
     },
+    {
+      label: 'accessibility spot-check evidence',
+      content: fs.readFileSync(
+        path.join(root, 'docs', 'release-evidence', 'ACCESSIBILITY-v0.1.0.md'),
+        'utf8',
+      ),
+      requiredFields: ['Command Center commit', 'Release host', 'Tested by', 'Tested at'],
+    },
   ]
   const tag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME
   const failures = validateReleaseReadiness({

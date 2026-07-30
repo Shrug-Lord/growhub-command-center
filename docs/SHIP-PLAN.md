@@ -1,10 +1,10 @@
 # Growhub Command Center CE ship plan
 
-Status: architecture grill complete. Phases 1 through 7 and the local,
-hardware, and private-host portions of Phase 8 are complete. The application
-remains release-candidate software until public-host CI, the release image
-build, the focused manual accessibility spot check, and GitHub repository
-security settings are verified.
+Status: architecture grill and implementation complete. Public-host CI, the
+multi-architecture release-image build, hardware evidence, deployment
+rehearsals, and GitHub repository security settings have passed. The
+application remains release-candidate software until the focused manual
+accessibility spot check and first `v0.1.0` tag complete.
 
 ## Target baseline
 
@@ -24,9 +24,9 @@ security settings are verified.
 |---|---|---|
 | Authentication and browser transport | UI-only setup, server-side sessions, CSRF, rate limits, same-origin typed APIs, no browser MQTT, and automated Axe coverage | Manual keyboard/screen-reader spot check on a release host |
 | Firmware integration | Closed CE subscriptions, authoritative mirrors, full outlet writes, CE v3 schedules, time and relay actions, confirmed lifecycle, drift, diagnostics, and passed CE 1.1.0C hardware evidence | None |
-| Operations | Port 80 Compose stack, bundled broker, health checks, backup, checksum-validated restore, update, reset, plus passed Raspberry Pi ARM64 and macOS ARM64 clean-host rehearsals | Public Compose CI and multi-architecture release-image build |
-| Quality | Lint, formatting, 121 server/client/release tests, 26 integration tests, production build, Playwright, Axe, secret scan, audits, signatures, container smoke, and real bundled-Mosquitto retained-state rebuild | Obtain green Linux, macOS, and Windows CI from the public clean clone |
-| GitHub release | Immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, multi-arch image, and attestations | Create the public remote, enable private vulnerability reporting, pass public CI, and run the first tag |
+| Operations | Port 80 Compose stack, bundled broker, health checks, backup, checksum-validated restore, update, reset, plus passed Raspberry Pi ARM64 and macOS ARM64 clean-host rehearsals | None |
+| Quality | Lint, formatting, 121 server/client/release tests, 26 integration tests, production build, Playwright, Axe, secret scan, audits, signatures, container smoke, and real bundled-Mosquitto retained-state rebuild | None |
+| GitHub release | Public repository, private vulnerability reporting, immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, multi-arch image, and attestations | Complete the manual accessibility spot check and run the first tag |
 
 ## Canonical action contract
 
@@ -233,7 +233,7 @@ Implementation status:
   destructive volume replacement, and restore rehearsal.
 - [x] CE 1.1.0C hardware bench evidence.
 - [x] Reference Raspberry Pi deployment/update/restore evidence.
-- [ ] Public host compatibility CI matrix and multi-architecture release-image build.
+- [x] Public host compatibility CI matrix and multi-architecture release-image build.
 
 - Add lint, formatting, unit, integration, API, browser smoke, full end-to-end, accessibility, dependency audit, and production-build scripts.
 - Add CI for supported Node LTS on pull requests and pushes, plus a tag-driven release workflow.
@@ -251,7 +251,7 @@ Exit criteria:
 
 ## Acceptance criteria
 
-- [ ] AC-01: Command Center runs from Docker Compose on Windows, macOS, and Linux across ARM64 and AMD64 without Raspberry Pi-specific application code.
+- [x] AC-01: Command Center runs from Docker Compose on Windows, macOS, and Linux across ARM64 and AMD64 without Raspberry Pi-specific application code.
 - [x] AC-02: First-run admin setup, login, session renewal, logout, and credential changes work entirely through the UI.
 - [x] AC-03: Browser code has no MQTT client, generic publish API, bearer token storage, or firmware HTTP time dependency.
 - [x] AC-04: Valid retained CE presence, outlet, and schedule state rebuilds the authoritative device mirror after restart.
@@ -266,7 +266,7 @@ Exit criteria:
 - [x] AC-13: Diagnostics and exports provide enough current contract evidence without leaking credentials, sessions, CSRF values, raw auth data, or unrestricted MQTT controls.
 - [x] AC-14: Update, backup, restore, and reset workflows preserve or intentionally replace state exactly as documented.
 - [x] AC-15: Automated checks plus CE hardware bench tests pass before the first public release.
-- [ ] AC-16: Public repository metadata, license, security guidance, release workflow, and installation documentation are complete.
+- [x] AC-16: Public repository metadata, license, security guidance, release workflow, and installation documentation are complete.
 - [x] AC-17: Release notes identify the bench-tested CE firmware version, and unsupported or incomplete device contracts cannot enter dependent control or schedule workflows.
 
 ## Test strategy

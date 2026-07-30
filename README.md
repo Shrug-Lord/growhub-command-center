@@ -95,19 +95,17 @@ publication controls. Report vulnerabilities through the process in
 
 ## Release Status
 
-This repository is at release-candidate stage, not yet a supported public
-release. Automated unit, integration, browser, accessibility, security, and
-container checks pass locally. The CE 1.1.0C hardware contract passed on three
+This public repository is at release-candidate stage, not yet a supported
+release. Automated unit, integration, browser, accessibility, security,
+container, Linux x64, macOS ARM64, Windows x64, and multi-architecture image
+checks pass in public CI. The CE 1.1.0C hardware contract passed on three
 physical Growhub controllers. Clean install, update, reboot, backup, destructive
 restore, and device-reconnect rehearsals also passed on the reference Raspberry
 Pi ARM64 host, with an isolated clean-install and restore repeat on macOS ARM64.
 
-The first public tag remains deliberately blocked until:
-
-- Linux, macOS, and Windows CI is green from the public clean clone
-- The release image builds for Linux AMD64 and ARM64 in the public tag workflow
-- The focused manual keyboard and screen-reader release-host spot check passes
-- GitHub private vulnerability reporting is enabled
+The first public tag remains deliberately blocked until the focused manual
+keyboard and screen-reader release-host spot check passes. Public CI, the
+AMD64/ARM64 image preflight, and private vulnerability reporting are complete.
 
 Current acceptance criteria and evidence links are in the
 [CE ship plan](docs/SHIP-PLAN.md) and [release process](docs/RELEASE.md).

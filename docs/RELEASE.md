@@ -10,8 +10,10 @@ documented CE hardware contract have passed.
 2. Complete `docs/release-evidence/HOST-COMPATIBILITY.md` from a clean checkout,
    including the reference Raspberry Pi result. The pre-publication ARM64 macOS
    result is in `docs/release-evidence/HOST-macos-arm64-2026-07-13.md`.
-3. Update `CHANGELOG.md` and the versions in the root and server package files.
-4. Run the local release checks:
+3. Complete `docs/release-evidence/ACCESSIBILITY-v0.1.0.md` with the focused
+   keyboard and screen-reader result from the configured release host.
+4. Update `CHANGELOG.md` and the versions in the root and server package files.
+5. Run the local release checks:
 
        npm run verify
        npm run test:e2e
@@ -20,7 +22,7 @@ documented CE hardware contract have passed.
        npm run compose:config
        npm run compose:build
 
-5. Commit from a clean checkout and create the matching tag:
+6. Commit from a clean checkout and create the matching tag:
 
        git tag -a v0.1.0 -m "Growhub Command Center v0.1.0"
        git push origin main v0.1.0
@@ -46,5 +48,5 @@ Verify GitHub provenance with:
 
     gh attestation verify growhub-command-center-0.1.0.tar.gz --repo Shrug-Lord/growhub-command-center
 
-The release notes must identify the tested CE firmware version and link to both
-completed evidence files.
+The release notes must identify the tested CE firmware version and link to the
+completed hardware, host, and accessibility evidence files.
