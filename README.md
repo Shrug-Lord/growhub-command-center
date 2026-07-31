@@ -103,9 +103,9 @@ physical Growhub controllers. Clean install, update, reboot, backup, destructive
 restore, and device-reconnect rehearsals also passed on the reference Raspberry
 Pi ARM64 host, with an isolated clean-install and restore repeat on macOS ARM64.
 
-The first public tag remains deliberately blocked until the focused manual
-keyboard and screen-reader release-host spot check passes. Public CI, the
-AMD64/ARM64 image preflight, and private vulnerability reporting are complete.
+The focused manual keyboard and VoiceOver release-host spot check has passed.
+Public CI, the AMD64/ARM64 image preflight, and private vulnerability reporting
+are complete. The first public tag is the remaining release step.
 
 Current acceptance criteria and evidence links are in the
 [CE ship plan](docs/SHIP-PLAN.md) and [release process](docs/RELEASE.md).

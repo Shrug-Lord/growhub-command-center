@@ -2,9 +2,9 @@
 
 Status: architecture grill and implementation complete. Public-host CI, the
 multi-architecture release-image build, hardware evidence, deployment
-rehearsals, and GitHub repository security settings have passed. The
-application remains release-candidate software until the focused manual
-accessibility spot check and first `v0.1.0` tag complete.
+rehearsals, GitHub repository security settings, and the focused manual
+accessibility spot check have passed. The application remains release-candidate
+software until the first `v0.1.0` tag completes.
 
 ## Target baseline
 
@@ -26,7 +26,7 @@ accessibility spot check and first `v0.1.0` tag complete.
 | Firmware integration | Closed CE subscriptions, authoritative mirrors, full outlet writes, CE v3 schedules, time and relay actions, confirmed lifecycle, drift, diagnostics, and passed CE 1.1.0C hardware evidence | None |
 | Operations | Port 80 Compose stack, bundled broker, health checks, backup, checksum-validated restore, update, reset, plus passed Raspberry Pi ARM64 and macOS ARM64 clean-host rehearsals | None |
 | Quality | Lint, formatting, 121 server/client/release tests, 26 integration tests, production build, Playwright, Axe, secret scan, audits, signatures, container smoke, and real bundled-Mosquitto retained-state rebuild | None |
-| GitHub release | Public repository, private vulnerability reporting, immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, multi-arch image, and attestations | Complete the manual accessibility spot check and run the first tag |
+| GitHub release | Public repository, private vulnerability reporting, immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, multi-arch image, attestations, and passed accessibility evidence | Run the first tag |
 
 ## Canonical action contract
 
@@ -196,7 +196,7 @@ Exit criteria:
 - Core workflows are usable on desktop and mobile without overlapping controls or hidden blockers.
 - Every disabled action has server-derived typed rationale and every pending action remains inspectable after navigation or refresh.
 - The UI never directly connects to MQTT, infers action success, or replays a state-changing request automatically.
-- Accessibility checks cover keyboard use, focus handling, names, contrast, warning semantics, and modal/dialog behavior.
+- Accessibility checks cover keyboard use, focus handling, names, contrast, warning semantics, and inline device-detail/setup behavior.
 
 ### Phase 7: Diagnostics and operations
 
@@ -289,7 +289,7 @@ Exit criteria:
 
 - Test setup/login/session/CSRF recovery, onboarding, Device setup, schedule preflight, warning remediation, pending actions, manual controls, drift reconciliation, and outage recovery.
 - Run desktop and mobile browser flows with screenshot and console-error checks.
-- Run accessibility automation and focused manual keyboard/screen-reader checks on setup, dialogs, forms, warnings, and device controls.
+- Run accessibility automation and focused manual keyboard/screen-reader checks on setup, inline detail regions, forms, warnings, and device controls.
 
 ### Deployment and security
 
