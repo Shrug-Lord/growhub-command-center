@@ -103,9 +103,9 @@ jobs:
           printf '%s\n' \
             "Compatible CE firmware: 1.1.0C." \
             "" \
-            "CE hardware evidence: docs/release-evidence/CE-1.1.0C.md" \
-            "Host evidence: docs/release-evidence/HOST-COMPATIBILITY.md" \
-            "Accessibility evidence: docs/release-evidence/ACCESSIBILITY-v0.1.0.md" \
+            "CE hardware evidence: [CE 1.1.0C](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/release-evidence/CE-1.1.0C.md)" \
+            "Host evidence: [host compatibility](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/release-evidence/HOST-COMPATIBILITY.md)" \
+            "Accessibility evidence: [keyboard and screen reader](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/release-evidence/ACCESSIBILITY-v0.1.0.md)" \
             "Container image: ${IMAGE_NAME}:${GITHUB_REF_NAME#v}" \
             "Verify the attached source archive with SHA256SUMS or GitHub artifact attestations." \
             > release-notes.md

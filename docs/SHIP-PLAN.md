@@ -1,10 +1,9 @@
 # Growhub Command Center CE ship plan
 
-Status: architecture grill and implementation complete. Public-host CI, the
-multi-architecture release-image build, hardware evidence, deployment
-rehearsals, GitHub repository security settings, and the focused manual
-accessibility spot check have passed. The application remains release-candidate
-software until the first `v0.1.0` tag completes.
+Status: `v0.1.0` released. Architecture, implementation, public-host CI, the
+multi-architecture release image, hardware evidence, deployment rehearsals,
+GitHub repository security settings, and focused manual accessibility evidence
+are complete.
 
 ## Target baseline
 
@@ -18,15 +17,15 @@ software until the first `v0.1.0` tag completes.
 - Treat Command Center as authoritative for reusable templates, template revisions, role mappings, expected schedule links, setup review, action history, device events, sessions, and diagnostics metadata.
 - Document CE `1.1.0C` as the initial tested baseline, while gating runtime workflows on validated MQTT capabilities and payload contract versions rather than a display-version string alone.
 
-## Remaining release evidence
+## Release evidence
 
 | Area | Implemented | Remaining evidence |
 |---|---|---|
-| Authentication and browser transport | UI-only setup, server-side sessions, CSRF, rate limits, same-origin typed APIs, no browser MQTT, and automated Axe coverage | Manual keyboard/screen-reader spot check on a release host |
+| Authentication and browser transport | UI-only setup, server-side sessions, CSRF, rate limits, same-origin typed APIs, no browser MQTT, automated Axe coverage, and passed manual keyboard/VoiceOver evidence | None |
 | Firmware integration | Closed CE subscriptions, authoritative mirrors, full outlet writes, CE v3 schedules, time and relay actions, confirmed lifecycle, drift, diagnostics, and passed CE 1.1.0C hardware evidence | None |
 | Operations | Port 80 Compose stack, bundled broker, health checks, backup, checksum-validated restore, update, reset, plus passed Raspberry Pi ARM64 and macOS ARM64 clean-host rehearsals | None |
 | Quality | Lint, formatting, 121 server/client/release tests, 26 integration tests, production build, Playwright, Axe, secret scan, audits, signatures, container smoke, and real bundled-Mosquitto retained-state rebuild | None |
-| GitHub release | Public repository, private vulnerability reporting, immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, multi-arch image, attestations, and passed accessibility evidence | Run the first tag |
+| GitHub release | Public `v0.1.0` release, private vulnerability reporting, immutable-pinned CI actions, gated tag workflow, MIT license, security and contribution docs, issue templates, truthful screenshot, checksums, public multi-arch image, attestations, and passed accessibility evidence | None |
 
 ## Canonical action contract
 
