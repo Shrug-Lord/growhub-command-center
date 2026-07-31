@@ -38,9 +38,17 @@ test('operator setup, control, diagnostics, and responsive shell @smoke @a11y', 
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Device setup' })).toBeVisible()
   await expect(page.getByText('Bench Growhub')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Bench Growhub, Setup needs review' }),
+  ).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Outlet 1 assignment' })).toHaveValue('Light')
+  await expect(page.getByRole('textbox', { name: 'Outlet 4 label' })).toHaveValue('Reservoir Pump')
   await expectNoAxeViolations(page, 'device dashboard')
 
-  await page.getByRole('button', { name: 'Confirm current setup' }).click()
+  await page.getByRole('textbox', { name: 'Outlet 4 label' }).focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Confirm current setup' })).toBeFocused()
+  await page.keyboard.press('Enter')
   await expect(page.getByText('Setup confirmed', { exact: true }).first()).toBeVisible()
 
   await page.getByRole('button', { name: 'manual', exact: true }).click()

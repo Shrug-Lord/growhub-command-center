@@ -21,6 +21,7 @@ export default function DeviceSelector({ devices, selectedMac, onSelect }) {
           <button
             key={device._id}
             onClick={() => onSelect(device._id)}
+            aria-label={`${device.name}, ${currentStatus.label}`}
             className={`flex min-h-12 items-center gap-2 px-3 py-2 text-left text-sm font-medium transition-colors ${
               selectedMac === device._id
                 ? 'bg-green-700 text-white'

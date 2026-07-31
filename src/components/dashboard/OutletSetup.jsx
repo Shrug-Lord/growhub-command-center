@@ -181,6 +181,7 @@ export default function OutletSetup({
               <select
                 value={outlet.assignment}
                 onChange={(event) => update(outlet.id, 'assignment', event.target.value)}
+                aria-label={`Outlet ${outlet.id} assignment`}
                 className="h-10 w-full border border-gray-700 bg-gray-950 px-2 text-sm text-white focus:border-green-500 focus:outline-none"
               >
                 {ASSIGNMENTS.map((assignment) => (
@@ -196,6 +197,7 @@ export default function OutletSetup({
                 value={outlet.label}
                 maxLength={32}
                 onChange={(event) => update(outlet.id, 'label', event.target.value)}
+                aria-label={`Outlet ${outlet.id} label`}
                 className="h-10 w-full border border-gray-700 bg-gray-950 px-2 text-sm text-white focus:border-green-500 focus:outline-none"
               />
             </label>
