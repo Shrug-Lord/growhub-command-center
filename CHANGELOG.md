@@ -18,6 +18,11 @@ All notable changes will be documented here.
 - Automated unit, integration, browser, accessibility, security, and container
   release gates
 
+### Fixed
+
+- Added an explicit Growhub favicon to the application shell and production
+  container so browser tabs no longer display a missing-icon warning.
+
 ### Compatibility
 
 - Target CE firmware baseline: `1.1.0C`
