@@ -49,6 +49,7 @@
     "compose:backup": "node scripts/compose-backup.js",
     "compose:restore": "node scripts/compose-restore.js",
     "compose:update": "node scripts/compose-update.js",
+    "update-agent:install": "node scripts/install-update-agent.js",
     "compose:reset": "node scripts/reset-compose-data.js",
     "reset:dev": "npm --prefix deploy/server run reset:dev --"
   },

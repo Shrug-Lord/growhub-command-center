@@ -79,6 +79,23 @@ function flowerInput() {
   };
 }
 
+function fahrenheitFanInput() {
+  return {
+    name: 'Veg',
+    description: 'Fahrenheit-authored fan bands',
+    roles: [
+      {
+        assignment: 'Fan',
+        label: 'Exhaust Fan',
+        conditions: [
+          { type: 'temp_high_band_c', low_c: 25.56, high_c: 29.44 },
+          { type: 'rh_high_band', low: 65, high: 75 },
+        ],
+      },
+    ],
+  };
+}
+
 function createHarness(t) {
   let now = 10_000;
   const database = openDatabase(':memory:', { clock: () => now });
@@ -127,6 +144,27 @@ function createHarness(t) {
     },
     now: () => now,
   };
+}
+
+async function prepareFahrenheitFanLoad({ actionEngine, service }) {
+  const template = service.createTemplate(fahrenheitFanInput());
+  const setup = service.deviceScheduleState(MAC).setup;
+  await actionEngine.submit({
+    deviceId: MAC,
+    type: 'confirm_device_setup',
+    input: { outlet_fingerprint: setup.outlet_fingerprint },
+  });
+  const preflight = service.preflight(MAC, template.id);
+  const pending = await actionEngine.submit({
+    deviceId: MAC,
+    type: 'load_schedule',
+    input: {
+      template_id: template.id,
+      mappings: preflight.mapping_object,
+      acknowledged_warning_signature: preflight.warning_signature,
+    },
+  });
+  return { pending, preflight };
 }
 
 test('template validation enforces CE v3 assignment condition rules and immutable revisions', (t) => {
@@ -232,6 +270,74 @@ test('preflight requires setup review, infers physical roles, and requires warni
       .get(MAC).count,
     2,
   );
+});
+
+test('an exact float32 schedule state late-confirms a timed-out load without republishing', async (t) => {
+  const { actionEngine, database, published, service, advance } = createHarness(t);
+  const { pending, preflight } = await prepareFahrenheitFanLoad({ actionEngine, service });
+  const publishCount = published.length;
+
+  advance(15_001);
+  actionEngine.expireDue();
+  assert.equal(actionEngine.get(MAC, pending.id).status, 'timed_out');
+  assert.equal(
+    database.db.prepare('SELECT COUNT(*) AS count FROM device_expected_schedules').get().count,
+    0,
+  );
+
+  const firmwareSchedule = structuredClone(preflight.compiled_schedule);
+  for (const condition of firmwareSchedule.outlets[0].conditions) {
+    for (const key of ['low', 'high', 'low_c', 'high_c']) {
+      if (typeof condition[key] === 'number') condition[key] = Math.fround(condition[key]);
+    }
+  }
+  actionEngine.observeState({
+    deviceId: MAC,
+    stateKey: 'schedule_state',
+    revision: 2,
+    value: schedulePayload({ schedule: firmwareSchedule }),
+  });
+
+  const completed = actionEngine.get(MAC, pending.id);
+  assert.equal(completed.status, 'completed');
+  assert.equal(completed.reason_code, 'confirmed_after_timeout');
+  assert.equal(published.length, publishCount);
+  assert.equal(
+    database.db.prepare('SELECT COUNT(*) AS count FROM device_expected_schedules').get().count,
+    1,
+  );
+});
+
+test('late schedule reconciliation stops after its grace or a superseding emergency', async (t) => {
+  const first = createHarness(t);
+  const firstLoad = await prepareFahrenheitFanLoad(first);
+  first.advance(75_001);
+  first.actionEngine.expireDue();
+  first.actionEngine.observeState({
+    deviceId: MAC,
+    stateKey: 'schedule_state',
+    revision: 2,
+    value: schedulePayload({ schedule: firstLoad.preflight.compiled_schedule }),
+  });
+  assert.equal(first.actionEngine.get(MAC, firstLoad.pending.id).status, 'timed_out');
+
+  // A separate device-action engine would normally own the second scenario;
+  // use a nested test context so its in-memory database and timers are isolated.
+  await t.test('superseding emergency', async (nested) => {
+    const second = createHarness(nested);
+    const secondLoad = await prepareFahrenheitFanLoad(second);
+    second.advance(15_001);
+    second.actionEngine.expireDue();
+    second.advance(1);
+    await second.actionEngine.submit({ deviceId: MAC, type: 'emergency_all_off', input: {} });
+    second.actionEngine.observeState({
+      deviceId: MAC,
+      stateKey: 'schedule_state',
+      revision: 2,
+      value: schedulePayload({ schedule: secondLoad.preflight.compiled_schedule }),
+    });
+    assert.equal(second.actionEngine.get(MAC, secondLoad.pending.id).status, 'timed_out');
+  });
 });
 
 test('firmware-owned schedule changes create one drift episode and equality reconciles it', async (t) => {

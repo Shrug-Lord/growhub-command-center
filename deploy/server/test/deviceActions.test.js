@@ -7,6 +7,7 @@ const {
   DeviceActionError,
   createDeviceActionEngine,
   outletFingerprint,
+  sameSchedule,
 } = require('../src/deviceActions');
 const { MAC, outletsPayload, schedulePayload } = require('../test-support/firmwareFixtures');
 
@@ -119,6 +120,50 @@ test('PUBACK leaves an action pending until a newer authoritative state confirms
   assert.equal(noOp.status, 'completed');
   assert.equal(noOp.reason_code, 'already_in_requested_state');
   assert.equal(published.length, 1);
+});
+
+test('schedule equality models firmware float32 band storage', () => {
+  const intended = {
+    v: 3,
+    outlets: [
+      {
+        id: 2,
+        conditions: [
+          { type: 'temp_high_band_c', low_c: 25.56, high_c: 29.44 },
+          { type: 'rh_high_band', low: 65, high: 75 },
+        ],
+      },
+    ],
+  };
+  const firmware = {
+    v: 3,
+    outlets: [
+      {
+        id: 2,
+        conditions: [
+          { high: Math.fround(75), low: Math.fround(65), type: 'rh_high_band' },
+          {
+            high_c: Math.fround(29.44),
+            low_c: Math.fround(25.56),
+            type: 'temp_high_band_c',
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(sameSchedule(intended, firmware), true);
+});
+
+test('the deadline rechecks the persisted mirror before timing out', async (t) => {
+  const { database, engine, advance } = createHarness(t);
+  const pending = await engine.submit({ deviceId: MAC, type: 'switch_to_manual', input: {} });
+  seedState(database, 'schedule_state', schedulePayload({ mode: 'manual' }), 2);
+
+  advance(15_001);
+  engine.expireDue();
+
+  assert.equal(engine.get(MAC, pending.id).status, 'completed');
 });
 
 test('manual outlet mask uses Outlet 1 bit 3 and confirms only the complete intended mask', async (t) => {

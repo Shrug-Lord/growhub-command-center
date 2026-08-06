@@ -83,6 +83,7 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
   const [needsRecheck, setNeedsRecheck] = useState(false)
   const [confirmedWarnings, setConfirmedWarnings] = useState(false)
   const [error, setError] = useState(null)
+  const [confirmationNotice, setConfirmationNotice] = useState(null)
   const reviewRequest = useRef(0)
   const device = devices.find((candidate) => candidate._id === deviceId)
 
@@ -135,6 +136,7 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
     if (!preflight?.can_load || needsRecheck) return
     setSubmitting(true)
     setError(null)
+    setConfirmationNotice(null)
     try {
       const action = await createDeviceAction({
         deviceId,
@@ -148,7 +150,22 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
         },
       })
       const confirmed =
-        action.status === 'pending' ? await waitForDeviceAction({ deviceId, action }) : action
+        action.status === 'pending'
+          ? await waitForDeviceAction({
+              deviceId,
+              action,
+              onUpdate(nextAction) {
+                if (
+                  nextAction.status === 'timed_out' &&
+                  nextAction.reason_code === 'confirmation_timeout'
+                ) {
+                  setConfirmationNotice(
+                    'The normal confirmation window elapsed. Command Center is checking the latest firmware state before offering a retry.',
+                  )
+                }
+              },
+            })
+          : action
       if (confirmed.status === 'completed') {
         onLoaded(confirmed)
       } else if (confirmed.status === 'pending') {
@@ -157,15 +174,18 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
         )
       } else {
         setError(
-          confirmed.reason_code
-            ? `Firmware did not confirm the schedule: ${confirmed.reason_code.replaceAll('_', ' ')}.`
-            : 'Firmware did not confirm the schedule.',
+          confirmed.reason_code === 'confirmation_timeout'
+            ? 'Command Center could not verify whether firmware applied this schedule. Review the current device automation before retrying.'
+            : confirmed.reason_code
+              ? `Firmware did not confirm the schedule: ${confirmed.reason_code.replaceAll('_', ' ')}.`
+              : 'Firmware did not confirm the schedule.',
         )
       }
     } catch (requestError) {
       setError(requestError.message)
       if (requestError.code === 'action_blocked') await review(mappings)
     } finally {
+      setConfirmationNotice(null)
       setSubmitting(false)
     }
   }
@@ -340,6 +360,14 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
       {error && (
         <p className="text-sm text-red-300" role="alert">
           {error}
+        </p>
+      )}
+      {confirmationNotice && (
+        <p
+          className="border-l-2 border-amber-500 bg-amber-950/30 px-3 py-2 text-sm text-amber-100"
+          role="status"
+        >
+          {confirmationNotice}
         </p>
       )}
       <button

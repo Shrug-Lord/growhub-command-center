@@ -7,6 +7,7 @@ import Sidebar from './Sidebar.jsx'
 import BrokerUnavailableBanner from './BrokerUnavailableBanner.jsx'
 import ConnectionBadge from './ConnectionBadge.jsx'
 import ServerAvailabilityBanner from './ServerAvailabilityBanner.jsx'
+import UpdateAvailableBanner from './UpdateAvailableBanner.jsx'
 
 export default function AppShell({ activePage, onNavigate, children }) {
   const { logout, auth } = useAuth()
@@ -40,6 +41,7 @@ export default function AppShell({ activePage, onNavigate, children }) {
           </div>
         </header>
         <ServerAvailabilityBanner />
+        <UpdateAvailableBanner onOpenSettings={() => onNavigate('settings')} />
         <BrokerUnavailableBanner
           status={brokerStatus}
           onOpenDiagnostics={() => onNavigate('diagnostics')}

@@ -127,8 +127,12 @@ A pending schedule load that CE firmware rejected with a schedule-specific write
 _Avoid_: Timed-out load, health warning
 
 **Timed-out schedule load**:
-A pending schedule load that Command Center could not confirm or reject from firmware-published state within the local confirmation window. A timed-out schedule load is not retried automatically and does not replace the expected active schedule.
+A pending schedule load that Command Center could not confirm or reject from firmware-published state within the 15-second confirmation window. It is not retried automatically. For a bounded 60-second reconciliation grace, an exact newer firmware schedule may still turn it into a late-confirmed schedule load when no later schedule-changing or emergency action superseded it; otherwise it remains timed out and does not replace the expected active schedule.
 _Avoid_: Failed firmware schedule, confirmed load
+
+**Late-confirmed schedule load**:
+A schedule load that crossed the normal confirmation deadline but was proven during the bounded reconciliation grace by an exact newer firmware-owned active schedule, with no later schedule-changing or emergency action superseding it. It completes with late-confirmation context and establishes the expected active schedule without publishing the schedule again.
+_Avoid_: Automatic retry, assumed success, ordinary on-time confirmation
 
 **Device health warning**:
 A firmware-published warning about current device conditions, such as missing valid wall time, unhealthy SNTP sync, or unavailable sensor data. A device health warning may affect active automation but does not make a schedule template invalid.
@@ -193,6 +197,14 @@ _Avoid_: Device offline, device disconnected, retained state missing
 **Server health**:
 The Command Center-wide operational status of server dependencies and recovery work, such as MQTT broker connection and retained-state rebuild. Server health is global rather than scoped to one device.
 _Avoid_: Device health, device warning
+
+**Command Center release update**:
+A newer verified, tagged GitHub Release of Command Center than the version currently installed. Ordinary commits on the repository's main branch are not offered as appliance updates. Dismissing an available release suppresses the prompt for that release only; a later tagged release may prompt again.
+_Avoid_: Main-branch update, firmware update, template update
+
+**Automatic Command Center updates**:
+An operator setting that permits Command Center to install newer verified, tagged GitHub Releases without requiring routine shell access to the Pi. Automatic updates never install arbitrary main-branch commits.
+_Avoid_: Firmware OTA, unattended main-branch deployment
 
 **Device summary signal**:
 A device-list or dashboard indicator for one specific aspect of a Growhub, such as Device presence, Device setup review, or Device health warning. Device summary signals are shown as separate signals rather than collapsed into one overall device status.

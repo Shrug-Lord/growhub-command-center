@@ -129,6 +129,20 @@ A ready installation returns:
 {"status":"ready"}
 ```
 
+On an always-on Linux host or Raspberry Pi, install the optional host update
+service once so future tagged Command Center releases can be installed from the
+UI without returning to the Pi terminal:
+
+```text
+sudo "$(command -v node)" scripts/install-update-agent.js
+```
+
+This service does not expose Docker control to the web container. It accepts
+only exact stable release tags discovered by Command Center, verifies the
+GitHub Release again, creates the normal pre-update backup, and reports the
+result back to Settings. You can leave automatic installation off and use
+**Update now**, or enable automatic updates later in Settings.
+
 ### If Port 80 Or 1883 Is Already Used
 
 The defaults are:

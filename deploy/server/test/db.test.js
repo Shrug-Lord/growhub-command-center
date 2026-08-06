@@ -23,6 +23,7 @@ function copyMigrations(t) {
     '003_firmware_mirror.sql',
     '004_device_actions.sql',
     '005_templates_and_drift.sql',
+    '006_release_updates.sql',
   ]) {
     const source = path.join(__dirname, `../migrations/${name}`);
     fs.copyFileSync(source, path.join(directory, name));
@@ -34,10 +35,10 @@ test('fresh database applies the CE domain baseline exactly once', (t) => {
   const dbPath = path.join(temporaryDirectory(t), 'growhub.db');
   const database = openDatabase(dbPath, { clock: () => 123_456 });
 
-  assert.deepEqual(database.migrationState, { currentVersion: 5, appliedCount: 5 });
+  assert.deepEqual(database.migrationState, { currentVersion: 6, appliedCount: 6 });
   assert.equal(database.stmts.getSetting.get('retention_days').value, '365');
   assert.deepEqual(database.stmts.getAllDevices.all(), []);
-  assert.equal(database.db.pragma('user_version', { simple: true }), 5);
+  assert.equal(database.db.pragma('user_version', { simple: true }), 6);
   assert.deepEqual(
     database.db
       .prepare(
@@ -109,6 +110,12 @@ test('fresh database applies the CE domain baseline exactly once', (t) => {
         applied_at: 123_456,
         checksum_length: 64,
       },
+      {
+        version: 6,
+        name: 'release_updates',
+        applied_at: 123_456,
+        checksum_length: 64,
+      },
     ],
   );
   assert.deepEqual(
@@ -131,7 +138,7 @@ test('fresh database applies the CE domain baseline exactly once', (t) => {
   database.close();
 
   const reopened = openDatabase(dbPath);
-  assert.deepEqual(reopened.migrationState, { currentVersion: 5, appliedCount: 0 });
+  assert.deepEqual(reopened.migrationState, { currentVersion: 6, appliedCount: 0 });
   reopened.close();
 });
 
@@ -320,7 +327,7 @@ test('migration checksums are stable across platform line endings', (t) => {
   fs.writeFileSync(migrationPath, fs.readFileSync(migrationPath, 'utf8').replace(/\r?\n/g, '\r\n'));
 
   const reopened = openDatabase(dbPath, { migrationsDir });
-  assert.deepEqual(reopened.migrationState, { currentVersion: 5, appliedCount: 0 });
+  assert.deepEqual(reopened.migrationState, { currentVersion: 6, appliedCount: 0 });
   reopened.close();
 });
 

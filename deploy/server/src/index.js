@@ -14,6 +14,7 @@ const { createLogger } = require('./logger');
 const { createMqttService } = require('./mqtt');
 const { createRuntimeState } = require('./runtimeState');
 const { createScheduleTemplateService } = require('./scheduleTemplates');
+const { createReleaseUpdateService, ReleaseUpdateError } = require('./releaseUpdates');
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ function createApp({
   mqttService,
   actionEngine,
   scheduleService,
+  updateService,
   diagnosticsService: suppliedDiagnosticsService,
   logger,
   uuid,
@@ -142,6 +144,11 @@ function createApp({
     return sendError(req, res, error.status, error.code, error.message, error.details);
   }
 
+  function sendReleaseUpdateError(req, res, error) {
+    if (!(error instanceof ReleaseUpdateError)) throw error;
+    return sendError(req, res, error.status, error.code, error.message);
+  }
+
   function formatSession(session) {
     return {
       csrf_token: session.csrfToken,
@@ -240,6 +247,61 @@ function createApp({
 
   app.get('/api/v1/server/health', requireAuth, (_req, res) => {
     return res.json({ server_health: formatServerHealth(mqttService) });
+  });
+
+  // ── Command Center releases ─────────────────────────────────────────────────
+
+  app.get(
+    '/api/v1/updates',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      if (!updateService) {
+        return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
+      }
+      const updates = await updateService.check({ force: req.query.check === '1' });
+      return res.json({ updates });
+    }),
+  );
+
+  app.post('/api/v1/updates/dismiss', ...requireWriteAuth, (req, res) => {
+    if (!updateService) {
+      return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
+    }
+    try {
+      return res.json({ updates: updateService.dismiss(req.body?.tag) });
+    } catch (error) {
+      return sendReleaseUpdateError(req, res, error);
+    }
+  });
+
+  app.put(
+    '/api/v1/updates/settings',
+    ...requireWriteAuth,
+    asyncHandler(async (req, res) => {
+      if (!updateService) {
+        return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
+      }
+      try {
+        return res.json({
+          updates: await updateService.setAutoInstall(req.body?.auto_install),
+        });
+      } catch (error) {
+        return sendReleaseUpdateError(req, res, error);
+      }
+    }),
+  );
+
+  app.post('/api/v1/updates/install', ...requireWriteAuth, (req, res) => {
+    if (!updateService) {
+      return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
+    }
+    try {
+      return res.status(202).json({
+        updates: updateService.requestInstall(req.body?.tag),
+      });
+    } catch (error) {
+      return sendReleaseUpdateError(req, res, error);
+    }
   });
 
   // ── Read-only diagnostics ────────────────────────────────────────────────────
@@ -654,6 +716,7 @@ async function startServer({
   mqttService: suppliedMqttService,
   actionEngine: suppliedActionEngine,
   scheduleService: suppliedScheduleService,
+  updateService: suppliedUpdateService,
   runtimeState: suppliedRuntimeState,
   listenFn = listen,
   setIntervalFn = setInterval,
@@ -677,6 +740,7 @@ async function startServer({
   let mqttService = suppliedMqttService;
   let actionEngine = suppliedActionEngine;
   let scheduleService = suppliedScheduleService;
+  let updateService = suppliedUpdateService;
   let removeActionObserver;
   let removeScheduleObserver;
   let server;
@@ -716,6 +780,16 @@ async function startServer({
       clock,
       uuid,
     });
+    if (!updateService && database.migrationState) {
+      updateService = createReleaseUpdateService({
+        database,
+        logger,
+        updateRequestDir: config.updateRequestDir,
+        clock,
+        setIntervalFn,
+        clearIntervalFn,
+      });
+    }
     actionEngine.recover();
     removeActionObserver = mqttService.addObserver?.(actionEngine);
     removeScheduleObserver = mqttService.addObserver?.(scheduleService);
@@ -726,11 +800,13 @@ async function startServer({
       mqttService,
       actionEngine,
       scheduleService,
+      updateService,
       logger,
       uuid,
       clock,
     });
     server = await listenFn(app, config);
+    updateService?.start?.();
     mqttService.connect();
     retentionHandle = startRetentionSweep({
       stmts: database.stmts,
@@ -777,6 +853,9 @@ async function startServer({
         } finally {
           clearTimeoutFn(forceHandle);
           try {
+            updateService?.close?.();
+          } catch (_) {}
+          try {
             removeActionObserver?.();
           } catch (_) {}
           try {
@@ -810,6 +889,7 @@ async function startServer({
       database,
       actionEngine,
       scheduleService,
+      updateService,
       logger,
       mqttService,
       runtimeState,
@@ -839,6 +919,9 @@ async function startServer({
         await mqttService.disconnect();
       } catch (_) {}
     }
+    try {
+      updateService?.close?.();
+    } catch (_) {}
     try {
       removeActionObserver?.();
     } catch (_) {}

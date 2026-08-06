@@ -146,6 +146,46 @@ async function withFixture(callback) {
     logger: loggerStub(),
     clock: () => now,
   });
+  let updateStatus = {
+    current_version: '0.1.0',
+    latest_release: {
+      tag: 'v0.2.0',
+      version: '0.2.0',
+      name: 'Command Center v0.2.0',
+      url: 'https://github.com/Shrug-Lord/growhub-command-center/releases/tag/v0.2.0',
+      published_at: '2026-08-06T12:00:00.000Z',
+    },
+    update_available: true,
+    prompt_available: true,
+    dismissed: false,
+    auto_install: false,
+    checked_at: '2026-08-06T12:00:00.000Z',
+    check_error: null,
+    agent: { installed: true, installed_at: '2026-08-06T12:00:00.000Z' },
+    install: null,
+  };
+  const updateService = {
+    async check() {
+      return updateStatus;
+    },
+    dismiss(tag) {
+      updateStatus = { ...updateStatus, dismissed: true, prompt_available: false };
+      assert.equal(tag, 'v0.2.0');
+      return updateStatus;
+    },
+    async setAutoInstall(enabled) {
+      updateStatus = { ...updateStatus, auto_install: enabled, prompt_available: false };
+      return updateStatus;
+    },
+    requestInstall(tag) {
+      updateStatus = {
+        ...updateStatus,
+        prompt_available: false,
+        install: { state: 'requested', tag, requested_at: '2026-08-06T12:00:00.000Z' },
+      };
+      return updateStatus;
+    },
+  };
   const app = createApp({
     config: loadConfig({ NODE_ENV: 'test', DB_PATH: ':memory:', APP_DATA_DIR: appDataDir }),
     runtimeState,
@@ -153,6 +193,7 @@ async function withFixture(callback) {
     mqttService,
     actionEngine,
     scheduleService,
+    updateService,
     logger: loggerStub(),
     clock: () => now,
   });
@@ -252,6 +293,7 @@ test('read APIs return direct named resources', async () => {
       [`/api/v1/devices/${DEVICE_ID}`, 'device'],
       [`/api/v1/devices/${DEVICE_ID}/outlets`, 'outlets'],
       ['/api/v1/server/health', 'server_health'],
+      ['/api/v1/updates', 'updates'],
       ['/api/v1/diagnostics', 'diagnostics'],
       [`/api/v1/diagnostics/devices/${DEVICE_ID}`, 'diagnostics'],
       ['/api/v1/diagnostics/export', 'diagnostics'],
@@ -341,6 +383,21 @@ test('mutation APIs return the resource they changed without generic success wra
     });
     assertOnlyResource(settings.body, 'settings');
     assert.equal(settings.body.settings.retention_days, '30');
+
+    const automaticUpdates = await request('/api/v1/updates/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ auto_install: true }),
+    });
+    assertOnlyResource(automaticUpdates.body, 'updates');
+    assert.equal(automaticUpdates.body.updates.auto_install, true);
+
+    const installUpdate = await request('/api/v1/updates/install', {
+      method: 'POST',
+      body: JSON.stringify({ tag: 'v0.2.0' }),
+    });
+    assertOnlyResource(installUpdate.body, 'updates');
+    assert.equal(installUpdate.response.status, 202);
+    assert.equal(installUpdate.body.updates.install.state, 'requested');
 
     const createdSchedule = await request('/api/v1/schedule-templates', {
       method: 'POST',

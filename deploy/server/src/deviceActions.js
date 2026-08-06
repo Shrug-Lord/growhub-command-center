@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 
 const CONFIRMATION_TIMEOUT_MS = 15_000;
+const LATE_SCHEDULE_CONFIRMATION_GRACE_MS = 60_000;
 const PUBLISH_ACK_WAIT_MS = 3_000;
 const HISTORY_MAX_AGE_MS = 30 * 86_400_000;
 const OUTLET_TO_RELAY_BIT = Object.freeze({ 1: 3, 2: 0, 3: 1, 4: 2 });
@@ -77,6 +78,11 @@ function asIso(value) {
 
 function formatAction(row) {
   if (!row) return null;
+  const reconciliationUntil =
+    new Set(['load_schedule', 'reload_expected_schedule']).has(row.type) &&
+    Number.isFinite(row.timeout_at)
+      ? row.timeout_at + LATE_SCHEDULE_CONFIRMATION_GRACE_MS
+      : null;
   return {
     id: row.id,
     device_id: row.device_id,
@@ -85,10 +91,28 @@ function formatAction(row) {
     created_at: asIso(row.created_at),
     updated_at: asIso(row.updated_at),
     timeout_at: asIso(row.timeout_at),
+    reconciliation_until: asIso(reconciliationUntil),
     completed_at: asIso(row.completed_at),
     reason_code: row.reason_code ?? null,
     context: parseJson(row.context_json, {}),
   };
+}
+
+const FIRMWARE_FLOAT_KEYS = new Set(['low', 'high', 'low_c', 'high_c']);
+
+function normalizeScheduleValue(value, key = null) {
+  if (Array.isArray(value)) return value.map((entry) => normalizeScheduleValue(entry));
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((entryKey) => [entryKey, normalizeScheduleValue(value[entryKey], entryKey)]),
+    );
+  }
+  if (FIRMWARE_FLOAT_KEYS.has(key) && typeof value === 'number' && Number.isFinite(value)) {
+    return Math.fround(value);
+  }
+  return value;
 }
 
 function normalizeOutlets(outlets) {
@@ -140,7 +164,7 @@ function normalizeSchedule(schedule) {
         id: outlet.id,
         conditions: Array.isArray(outlet.conditions)
           ? outlet.conditions
-              .map((condition) => ({ ...condition }))
+              .map((condition) => normalizeScheduleValue(condition))
               .sort((a, b) => String(a.type).localeCompare(String(b.type)))
           : [],
       }))
@@ -308,6 +332,35 @@ function createDeviceActionEngine({
       WHERE status = 'pending' AND timeout_at IS NOT NULL AND timeout_at <= ?
       ORDER BY timeout_at ASC
     `),
+    lateScheduleCandidates: db.prepare(`
+      SELECT rowid AS action_sequence, * FROM device_actions
+      WHERE device_id = @device_id
+        AND type IN ('load_schedule', 'reload_expected_schedule')
+        AND status = 'timed_out'
+        AND reason_code = 'confirmation_timeout'
+        AND timeout_at IS NOT NULL
+        AND timeout_at >= @cutoff
+      ORDER BY rowid DESC
+    `),
+    hasSupersedingAction: db.prepare(`
+      SELECT 1 FROM device_actions
+      WHERE device_id = @device_id
+        AND rowid > @action_sequence
+        AND (
+          type IN ('load_schedule', 'reload_expected_schedule', 'emergency_all_off')
+          OR (
+            type = 'update_outlet_config'
+            AND json_extract(confirmation_json, '$.assignment_changed') = 1
+          )
+        )
+      LIMIT 1
+    `),
+    promoteTimedOut: db.prepare(`
+      UPDATE device_actions
+      SET status = 'completed', reason_code = 'confirmed_after_timeout',
+          completed_at = @completed_at, updated_at = @completed_at
+      WHERE id = @id AND status = 'timed_out' AND reason_code = 'confirmation_timeout'
+    `),
     historyFirst: db.prepare(`
       SELECT * FROM device_actions
       WHERE device_id = @device_id
@@ -452,13 +505,49 @@ function createDeviceActionEngine({
     return row;
   }
 
+  function promoteTimedOut(row, at = clock()) {
+    const promote = db.transaction(() => {
+      const changed = sql.promoteTimedOut.run({ id: row.id, completed_at: at }).changes;
+      if (!changed) return { changed: false, row: sql.getById.get(row.id) };
+      const completed = sql.getById.get(row.id);
+      mutateTerminal(completed);
+      return { changed: true, row: completed };
+    });
+    const result = promote();
+    if (!result.changed) return result.row;
+    notifyTerminal(result.row);
+    prune(result.row.device_id);
+    logger.info('device_action_late_confirmed', {
+      action_id: result.row.id,
+      device_id: result.row.device_id,
+      action_type: result.row.type,
+      request_id: result.row.request_id,
+    });
+    return result.row;
+  }
+
+  function confirmationFromCurrentMirror(row) {
+    const required = parseJson(row.required_state_keys_json, []);
+    return required.some((stateKey) => {
+      const current = state(row.device_id, stateKey);
+      return confirmationMatches(row, stateKey, current.row?.revision ?? 0, current.value);
+    });
+  }
+
+  function timeoutOrConfirm(row) {
+    const current = sql.getById.get(row.id);
+    if (!current || current.status !== 'pending') return current;
+    if (confirmationFromCurrentMirror(current)) return finish(current.id, 'completed', null);
+    return finish(current.id, 'timed_out', 'confirmation_timeout', { at: current.timeout_at });
+  }
+
   function scheduleDeadline(row) {
     clearDeadline(row.id);
     if (row.status !== 'pending' || !Number.isFinite(row.timeout_at)) return;
     const delay = Math.max(0, row.timeout_at - clock());
     const handle = setTimeoutFn(() => {
       deadlines.delete(row.id);
-      finish(row.id, 'timed_out', 'confirmation_timeout', { at: row.timeout_at });
+      timeoutOrConfirm(row);
     }, delay);
     handle?.unref?.();
     deadlines.set(row.id, handle);
@@ -1064,6 +1153,21 @@ function createDeviceActionEngine({
         finish(row.id, 'completed', null);
       }
     }
+    if (stateKey !== 'schedule_state') return;
+    const cutoff = clock() - LATE_SCHEDULE_CONFIRMATION_GRACE_MS;
+    for (const row of sql.lateScheduleCandidates.all({ device_id: deviceId, cutoff })) {
+      if (
+        sql.hasSupersedingAction.get({
+          device_id: deviceId,
+          action_sequence: row.action_sequence,
+        }) ||
+        !confirmationMatches(row, stateKey, revision, value)
+      ) {
+        continue;
+      }
+      promoteTimedOut(row);
+      break;
+    }
   }
 
   function errorMatches(row, errorKey, sequence, value) {
@@ -1111,9 +1215,7 @@ function createDeviceActionEngine({
     const now = clock();
     for (const row of sql.due.all(now)) {
       const existing = sql.getById.get(row.id);
-      finish(row.id, 'timed_out', 'confirmation_timeout', {
-        at: existing.timeout_at,
-      });
+      timeoutOrConfirm(existing);
     }
   }
 
@@ -1122,7 +1224,7 @@ function createDeviceActionEngine({
     sql.interruptPrepared.run({ now });
     for (const row of sql.allPending.all()) {
       if (row.timeout_at <= now) {
-        finish(row.id, 'timed_out', 'confirmation_timeout', { at: row.timeout_at });
+        timeoutOrConfirm(row);
       } else {
         scheduleDeadline(row);
       }
@@ -1310,6 +1412,7 @@ module.exports = {
   ACTION_TYPES,
   ActionBlockedCondition,
   CONFIRMATION_TIMEOUT_MS,
+  LATE_SCHEDULE_CONFIRMATION_GRACE_MS,
   DeviceActionError,
   MQTT_ACTION_TYPES,
   PUBLISH_ACK_WAIT_MS,

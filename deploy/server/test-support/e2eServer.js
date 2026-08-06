@@ -226,6 +226,48 @@ scheduleService = createScheduleTemplateService({
   actionEngine,
   logger,
 });
+const e2eReleaseAvailable = process.env.E2E_UPDATE_AVAILABLE === '1';
+let e2eUpdateStatus = {
+  current_version: '0.1.0',
+  latest_release: e2eReleaseAvailable
+    ? {
+        tag: 'v0.2.0',
+        version: '0.2.0',
+        name: 'Command Center v0.2.0',
+        url: 'https://github.com/Shrug-Lord/growhub-command-center/releases/tag/v0.2.0',
+        published_at: '2026-08-06T12:00:00.000Z',
+      }
+    : null,
+  update_available: e2eReleaseAvailable,
+  prompt_available: e2eReleaseAvailable,
+  dismissed: false,
+  auto_install: false,
+  checked_at: '2026-08-06T12:00:00.000Z',
+  check_error: null,
+  agent: { installed: true, installed_at: '2026-08-06T12:00:00.000Z' },
+  install: null,
+};
+const updateService = {
+  async check() {
+    return e2eUpdateStatus;
+  },
+  dismiss() {
+    e2eUpdateStatus = { ...e2eUpdateStatus, dismissed: true, prompt_available: false };
+    return e2eUpdateStatus;
+  },
+  async setAutoInstall(enabled) {
+    e2eUpdateStatus = { ...e2eUpdateStatus, auto_install: enabled, prompt_available: false };
+    return e2eUpdateStatus;
+  },
+  requestInstall(tag) {
+    e2eUpdateStatus = {
+      ...e2eUpdateStatus,
+      prompt_available: false,
+      install: { state: 'requested', tag, requested_at: new Date().toISOString() },
+    };
+    return e2eUpdateStatus;
+  },
+};
 runtimeState.markReady();
 const app = createApp({
   config,
@@ -234,6 +276,7 @@ const app = createApp({
   mqttService,
   actionEngine,
   scheduleService,
+  updateService,
   logger,
 });
 const server = app.listen(PORT, '127.0.0.1', () => {

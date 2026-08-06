@@ -15,6 +15,7 @@ test('loadConfig returns local development defaults', () => {
   assert.equal(config.mqttUrl, 'mqtt://127.0.0.1:1883');
   assert.equal(config.mqttClientId, 'growhub-command-center');
   assert.equal(config.dbPath, path.join(config.appDataDir, 'growhub.db'));
+  assert.equal(config.updateRequestDir, path.join(config.appDataDir, 'updates'));
   assert.deepEqual(config.trustedProxies, []);
 });
 
@@ -52,6 +53,7 @@ for (const [field, value] of [
   ['DB_PATH', ''],
   ['APP_DATA_DIR', ''],
   ['DIST_DIR', ''],
+  ['UPDATE_REQUEST_DIR', ''],
 ]) {
   test(`loadConfig rejects ${field}=${JSON.stringify(value)}`, () => {
     assert.throws(

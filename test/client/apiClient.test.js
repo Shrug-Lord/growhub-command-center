@@ -208,6 +208,49 @@ test('pending device actions are polled until firmware confirmation', async (t) 
   assert.equal(requests[0].options.method, undefined)
 })
 
+test('schedule actions keep polling through bounded late confirmation', async (t) => {
+  const requests = []
+  const responses = [
+    jsonResponse({
+      action: {
+        id: 'schedule-1',
+        status: 'timed_out',
+        reason_code: 'confirmation_timeout',
+        reconciliation_until: new Date(Date.now() + 10_000).toISOString(),
+      },
+    }),
+    jsonResponse({
+      action: {
+        id: 'schedule-1',
+        status: 'completed',
+        reason_code: 'confirmed_after_timeout',
+        reconciliation_until: new Date(Date.now() + 10_000).toISOString(),
+      },
+    }),
+  ]
+  useFetchMock(t, async (url, options) => {
+    requests.push({ url, options })
+    return responses.shift()
+  })
+
+  const updates = []
+  const action = await waitForDeviceAction({
+    deviceId: 'AA',
+    action: {
+      id: 'schedule-1',
+      status: 'pending',
+      timeout_at: new Date(Date.now() - 1_000).toISOString(),
+      reconciliation_until: new Date(Date.now() + 10_000).toISOString(),
+    },
+    pollIntervalMs: 0,
+    onUpdate: (next) => updates.push(next.status),
+  })
+
+  assert.equal(action.status, 'completed')
+  assert.deepEqual(updates, ['timed_out', 'completed'])
+  assert.equal(requests.length, 2)
+})
+
 test('auth bootstrap represents setup and authenticated sessions without expected 401 responses', async (t) => {
   const responses = [
     jsonResponse({ bootstrap: { session: null, setup_required: true } }),

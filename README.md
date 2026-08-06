@@ -23,6 +23,8 @@ authoritative for active device state and schedule execution.
 - Switch between AUTO and MANUAL, control individual outlets, and turn all off
 - Synchronize invalid device wall time and run mapped water pumps on demand
 - Export redacted diagnostics and perform backup, restore, update, and reset
+- Detect newer tagged releases, ignore one release, or install automatically
+  through an optional one-time Linux host service
 - Configure the first local administrator entirely in the browser
 
 The browser never connects to MQTT directly. It uses a closed, authenticated

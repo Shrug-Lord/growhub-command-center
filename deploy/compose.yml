@@ -1,10 +1,9 @@
 services:
-
   mosquitto:
     image: eclipse-mosquitto:2.0@sha256:212f89e1eaeb2c322d6441b64396e3346026674db8fa9c27beac293405c32b3c
     restart: unless-stopped
     ports:
-      - "${GROWHUB_MQTT_PORT:-1883}:1883"
+      - '${GROWHUB_MQTT_PORT:-1883}:1883'
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
@@ -13,8 +12,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   server:
     build:
@@ -25,16 +24,17 @@ services:
     depends_on:
       - mosquitto
     ports:
-      - "${GROWHUB_HTTP_PORT:-80}:3000"
+      - '${GROWHUB_HTTP_PORT:-80}:3000'
     environment:
-      NODE_ENV:       production
-      MQTT_URL:       ${MQTT_URL:-mqtt://mosquitto:1883}
+      NODE_ENV: production
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-growhub-command-center}
-      APP_DATA_DIR:   /data
-      DB_PATH:        /data/growhub.db
-      PORT:           "3000"
-      DIST_DIR:       /app/dist
-      LOG_LEVEL:      ${LOG_LEVEL:-info}
+      APP_DATA_DIR: /data
+      DB_PATH: /data/growhub.db
+      PORT: '3000'
+      DIST_DIR: /app/dist
+      UPDATE_REQUEST_DIR: /updates
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     healthcheck:
       test:
@@ -51,13 +51,14 @@ services:
       retries: 3
     volumes:
       - server_data:/data
+      - ./update:/updates
     networks:
       - growhub
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   operations:
     image: node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
@@ -65,7 +66,7 @@ services:
       - operations
     network_mode: none
     command:
-      - "true"
+      - 'true'
     volumes:
       - server_data:/volumes/server
       - mosquitto_data:/volumes/mosquitto

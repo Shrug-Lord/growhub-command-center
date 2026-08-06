@@ -72,6 +72,16 @@ Mosquitto retained state lives in a separate named volume. A valid backup
 contains both volumes because restoring only one can produce an inconsistent
 view.
 
+## Release Updates
+
+The server polls only the repository's latest stable tagged GitHub Release and
+persists the cached release, per-tag dismissal, and automatic-update preference
+in SQLite. It cannot run Docker or arbitrary host commands. On Linux, a
+one-time-installed systemd path service watches a narrow bind-mounted request
+directory, validates the exact release again, and runs the existing backup-first
+Compose updater from the host checkout. This keeps Docker authority outside the
+web application while allowing routine Pi updates from the UI.
+
 ## Security Boundary
 
 The first release is a local-network appliance, not an internet service:
@@ -79,6 +89,8 @@ The first release is a local-network appliance, not an internet service:
 - First-run admin credentials are created in the UI; there are no defaults.
 - Sessions are server-side and cookies are HTTP-only and SameSite.
 - Authenticated writes require an in-memory CSRF token.
+- The web container has no Docker socket; release installation crosses to the
+  host only through a validated stable-tag request file.
 - The server applies bounded authentication rate limits and response security
   headers.
 - Diagnostics exports redact credentials, session material, CSRF values,

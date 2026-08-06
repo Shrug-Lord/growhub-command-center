@@ -75,12 +75,46 @@ internet router.
 
 ## Update
 
-The update command requires a clean Git checkout. It creates a backup first,
-fast-forwards the checkout, reinstalls locked tooling, pulls service images,
-rebuilds Command Center, starts the stack, and waits for readiness:
+Command Center checks the repository's latest stable tagged GitHub Release at
+startup and every six hours. When a newer release exists, the UI prompts once
+for that tag. **Ignore this release** suppresses only that release; a later tag
+can prompt again. Settings always shows the installed version, latest check,
+manual **Check now**, and the automatic-update option.
+
+### One-time Linux or Raspberry Pi setup
+
+Automatic installation deliberately runs outside the web container so the
+application never receives the Docker socket or arbitrary host-command access.
+From the Command Center checkout, install its narrow systemd host service once:
 
 ```bash
-npm run compose:update
+sudo "$(command -v node)" scripts/install-update-agent.js
+```
+
+The service watches only `deploy/update/request.json`, independently verifies
+that its exact `vX.Y.Z` tag is a published stable release, and invokes the
+backup-first updater as the account that owns the checkout. After this setup,
+use **Update now** in the prompt or enable **Install verified tagged releases
+automatically** in Settings. Routine releases then require no SSH or terminal
+work. The server may be unavailable for several minutes while a small Pi builds
+and restarts the release.
+
+Inspect host-agent activity when troubleshooting:
+
+```bash
+systemctl status growhub-command-center-updater.path
+journalctl -u growhub-command-center-updater.service -n 100 --no-pager
+```
+
+### Command-line fallback
+
+The fallback updater requires a clean Git checkout. Supply the exact release
+tag shown in GitHub or the UI; it creates a backup first, checks out that tag,
+reinstalls locked tooling, pulls service images, rebuilds Command Center,
+starts the stack, and waits for readiness:
+
+```bash
+npm run compose:update -- --release v0.2.0
 ```
 
 Pre-update archives are written under `backups/pre-update/`. The command stops
@@ -89,8 +123,12 @@ or overwrites local source changes. `--skip-backup` exists for recovery cases,
 but is not the normal update path:
 
 ```bash
-npm run compose:update -- --skip-backup
+npm run compose:update -- --release v0.2.0 --skip-backup
 ```
+
+Running `npm run compose:update` without `--release` remains the explicit
+source-checkout/development path that fast-forwards the current branch. It is
+not used by the UI or automatic updater.
 
 ## Backup
 

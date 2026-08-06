@@ -103,6 +103,11 @@ function loadConfig(env = process.env) {
   }
 
   const distDir = configuredPath(env, 'DIST_DIR', path.join(__dirname, '../../../dist'));
+  const updateRequestDir = configuredPath(
+    env,
+    'UPDATE_REQUEST_DIR',
+    path.join(appDataDir, 'updates'),
+  );
 
   let trustedProxies;
   try {
@@ -124,6 +129,7 @@ function loadConfig(env = process.env) {
     appDataDir,
     dbPath,
     distDir,
+    updateRequestDir,
     trustedProxies,
     shutdownDrainMs: 10_000,
     shutdownDeadlineMs: 30_000,

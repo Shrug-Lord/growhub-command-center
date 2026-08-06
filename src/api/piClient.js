@@ -72,6 +72,15 @@ function toEvent(event) {
   }
 }
 
+function announceUpdateStatus(updates) {
+  if (typeof globalThis.window?.dispatchEvent === 'function' && globalThis.CustomEvent) {
+    globalThis.window.dispatchEvent(
+      new globalThis.CustomEvent('command-center-update-status', { detail: updates }),
+    )
+  }
+  return updates
+}
+
 function toSession(session) {
   return {
     csrfToken: session.csrf_token,
@@ -167,15 +176,25 @@ export async function waitForDeviceAction({
   action,
   pollIntervalMs = 500,
   fallbackTimeoutMs = 20_000,
+  onUpdate,
 }) {
   let current = action
   const actionDeadline = Date.parse(action?.timeout_at)
-  const deadline =
+  const confirmationDeadline =
     (Number.isFinite(actionDeadline) ? actionDeadline : Date.now() + fallbackTimeoutMs) + 1_000
+  const reconciliationDeadline = Date.parse(action?.reconciliation_until)
+  const deadline = Number.isFinite(reconciliationDeadline)
+    ? reconciliationDeadline + 1_000
+    : confirmationDeadline
 
-  while (current?.status === 'pending' && Date.now() < deadline) {
+  while (
+    (current?.status === 'pending' ||
+      (current?.status === 'timed_out' && current?.reason_code === 'confirmation_timeout')) &&
+    Date.now() < deadline
+  ) {
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     current = await getDeviceAction({ deviceId, actionId: current.id })
+    onUpdate?.(current)
   }
 
   return current
@@ -200,6 +219,35 @@ export async function getDevice({ deviceId }) {
 export async function getServerHealth() {
   const body = await requestJson('/api/v1/server/health')
   return body.server_health
+}
+
+export async function getUpdateStatus({ check = false } = {}) {
+  const body = await requestJson(`/api/v1/updates${check ? '?check=1' : ''}`)
+  return announceUpdateStatus(body.updates)
+}
+
+export async function dismissUpdate({ tag } = {}) {
+  const body = await requestJson('/api/v1/updates/dismiss', {
+    method: 'POST',
+    body: JSON.stringify({ tag }),
+  })
+  return announceUpdateStatus(body.updates)
+}
+
+export async function setAutomaticUpdates({ enabled } = {}) {
+  const body = await requestJson('/api/v1/updates/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ auto_install: enabled }),
+  })
+  return announceUpdateStatus(body.updates)
+}
+
+export async function installUpdate({ tag } = {}) {
+  const body = await requestJson('/api/v1/updates/install', {
+    method: 'POST',
+    body: JSON.stringify({ tag }),
+  })
+  return announceUpdateStatus(body.updates)
 }
 
 export async function getDiagnosticsSummary() {
