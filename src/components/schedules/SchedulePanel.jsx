@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   ChevronLeft,
@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { useDevices } from '../../contexts/DevicesContext.jsx'
 import { useRecoveryTask } from '../../contexts/ServerAvailabilityContext.jsx'
+import { useTempUnit } from '../../contexts/TempUnitContext.jsx'
+import { scheduleConditionsSummary } from '../../utils/scheduleDisplay.js'
 import {
   createDeviceAction,
   createScheduleTemplate,
@@ -72,6 +74,7 @@ function warningText(warning) {
 }
 
 function LoadReview({ template, devices, onBack, onLoaded }) {
+  const { unit } = useTempUnit()
   const [deviceId, setDeviceId] = useState(devices[0]?._id ?? '')
   const [mappings, setMappings] = useState({})
   const [preflight, setPreflight] = useState(null)
@@ -80,11 +83,13 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
   const [needsRecheck, setNeedsRecheck] = useState(false)
   const [confirmedWarnings, setConfirmedWarnings] = useState(false)
   const [error, setError] = useState(null)
+  const reviewRequest = useRef(0)
   const device = devices.find((candidate) => candidate._id === deviceId)
 
   const review = useCallback(
-    async (nextMappings = mappings) => {
+    async (nextMappings) => {
       if (!deviceId) return
+      const requestId = ++reviewRequest.current
       setLoading(true)
       setError(null)
       try {
@@ -93,17 +98,18 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
           templateId: template.id,
           mappings: nextMappings,
         })
+        if (requestId !== reviewRequest.current) return
         setPreflight(result)
         setMappings(result.mapping_object)
         setNeedsRecheck(false)
         setConfirmedWarnings(false)
       } catch (requestError) {
-        setError(requestError.message)
+        if (requestId === reviewRequest.current) setError(requestError.message)
       } finally {
-        setLoading(false)
+        if (requestId === reviewRequest.current) setLoading(false)
       }
     },
-    [deviceId, mappings, template.id],
+    [deviceId, template.id],
   )
 
   useEffect(() => {
@@ -116,9 +122,13 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
   }, [deviceId, template.id])
 
   function setMapping(roleId, outletId) {
-    setMappings((current) => ({ ...current, [roleId]: Number(outletId) }))
+    const nextMappings = { ...mappings }
+    if (outletId === '') delete nextMappings[roleId]
+    else nextMappings[roleId] = Number(outletId)
+    setMappings(nextMappings)
     setNeedsRecheck(true)
     setConfirmedWarnings(false)
+    void review(nextMappings)
   }
 
   async function load() {
@@ -315,7 +325,12 @@ function LoadReview({ template, devices, onBack, onLoaded }) {
                 <span className="text-gray-200">
                   {entry.role_label} to Outlet {entry.outlet_id}: {entry.outlet_label}
                 </span>
-                <span className="text-xs text-gray-500">{entry.summary}</span>
+                <span className="text-xs text-gray-500">
+                  {scheduleConditionsSummary(
+                    template.roles.find((role) => role.id === entry.role_id)?.conditions ?? [],
+                    unit,
+                  ) || entry.summary}
+                </span>
               </div>
             ))}
           </div>

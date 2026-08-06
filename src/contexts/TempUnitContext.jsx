@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState } from 'react'
 
+export { fromDisplayTemp, toDisplayTemp } from '../utils/temperature.js'
+
 const TempUnitContext = createContext(null)
 
 export function TempUnitProvider({ children }) {
@@ -15,14 +17,4 @@ export function TempUnitProvider({ children }) {
 
 export function useTempUnit() {
   return useContext(TempUnitContext)
-}
-
-export function toDisplayTemp(c, unit) {
-  if (c == null) return null
-  return unit === 'F' ? +((c * 9) / 5 + 32).toFixed(1) : +parseFloat(c).toFixed(1)
-}
-
-export function fromDisplayTemp(v, unit) {
-  if (v == null || v === '') return v
-  return unit === 'F' ? +(((v - 32) * 5) / 9).toFixed(2) : +v
 }

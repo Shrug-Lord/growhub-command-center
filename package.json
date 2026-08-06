@@ -28,7 +28,7 @@
     "format:check": "prettier --check src scripts test e2e deploy/server/src deploy/server/test deploy/server/test-support .github *.js *.json",
     "test": "npm run test:server && npm run test:client",
     "test:server": "npm test --prefix deploy/server",
-    "test:client": "node --test --test-concurrency=1 test/client/apiClient.test.js test/client/chartData.test.js test/client/deviceState.test.js test/client/driftState.test.js test/client/serverAvailability.test.js test/client/shellAssets.test.js test/release/releaseReadiness.test.js",
+    "test:client": "node --test --test-concurrency=1 test/client/apiClient.test.js test/client/chartData.test.js test/client/deviceState.test.js test/client/driftState.test.js test/client/scheduleDisplay.test.js test/client/serverAvailability.test.js test/client/shellAssets.test.js test/release/releaseReadiness.test.js",
     "test:integration": "node --test --test-concurrency=1 deploy/server/test/apiContracts.test.js deploy/server/test/authApi.test.js deploy/server/test/mqttMirror.test.js deploy/server/test/deviceActions.test.js deploy/server/test/scheduleTemplates.test.js",
     "build": "vite build",
     "preview": "vite preview",
