@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildServicePath, resolveNpmPath } from '../../scripts/install-update-agent.js'
+import {
+  buildServicePath,
+  resolveNpmPath,
+  systemdAbsolutePath,
+} from '../../scripts/install-update-agent.js'
 
 function executablePaths(...paths) {
   const existing = new Set(paths)
@@ -46,4 +50,14 @@ test('service PATH includes both runtime directories for npm env-node launchers'
 
   assert.equal(servicePath.split(':')[0], '/home/shrug/.nvm/versions/node/v24.18.0/bin')
   assert.ok(servicePath.includes('/usr/bin'))
+})
+
+test('scalar systemd paths remain absolute instead of retaining shell-style quotes', () => {
+  const checkout = '/home/shrug/growhub-command-center'
+  const request = `${checkout}/deploy/update/request.json`
+
+  assert.equal(`WorkingDirectory=${systemdAbsolutePath(checkout)}`, `WorkingDirectory=${checkout}`)
+  assert.equal(`PathExists=${systemdAbsolutePath(request)}`, `PathExists=${request}`)
+  assert.throws(() => systemdAbsolutePath('"/home/shrug/growhub-command-center"'))
+  assert.throws(() => systemdAbsolutePath('/home/shrug\nInjected=true'))
 })

@@ -25,6 +25,14 @@ function systemdQuote(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
+export function systemdAbsolutePath(value) {
+  const candidate = String(value)
+  if (!path.isAbsolute(candidate) || /[\r\n]/.test(candidate)) {
+    throw new Error(`Invalid absolute path for a systemd unit: ${candidate}`)
+  }
+  return candidate
+}
+
 export function resolveNpmPath({
   nodePath = process.execPath,
   configuredPath = process.env.GROWHUB_NPM_PATH,
@@ -88,7 +96,7 @@ Wants=network-online.target
 Type=oneshot
 User=${user}
 Group=${gid}
-WorkingDirectory=${systemdQuote(repoRoot)}
+WorkingDirectory=${systemdAbsolutePath(repoRoot)}
 Environment=${systemdQuote(`HOME=${home}`)}
 Environment=${systemdQuote(`PATH=${servicePath}`)}
 Environment=${systemdQuote(`GROWHUB_NPM_PATH=${npmPath}`)}
@@ -102,7 +110,7 @@ WantedBy=multi-user.target
 Description=Watch for Growhub Command Center update requests
 
 [Path]
-PathExists=${systemdQuote(requestFile)}
+PathExists=${systemdAbsolutePath(requestFile)}
 Unit=${serviceName}.service
 
 [Install]
