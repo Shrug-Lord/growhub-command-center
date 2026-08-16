@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import test from 'node:test'
 
 import {
@@ -15,8 +16,9 @@ function executablePaths(...paths) {
 }
 
 test('resolves npm beside the Node executable when sudo PATH does not contain npm', () => {
-  const nodePath = '/home/shrug/.nvm/versions/node/v24.18.0/bin/node'
-  const npmPath = '/home/shrug/.nvm/versions/node/v24.18.0/bin/npm'
+  const runtimeDirectory = path.resolve('test-runtime', 'bin')
+  const nodePath = path.join(runtimeDirectory, 'node')
+  const npmPath = path.join(runtimeDirectory, 'npm')
 
   assert.equal(
     resolveNpmPath({
