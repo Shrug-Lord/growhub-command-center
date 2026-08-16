@@ -55,6 +55,21 @@ docker compose -f deploy/compose.yml logs --tail=200 mosquitto
 configuration, app-data ownership, migrations, and SQLite startup completed.
 MQTT outages are shown separately in authenticated diagnostics.
 
+## Sensor History
+
+Command Center stores individual sensor readings for the number of days set in
+Settings. History requests support up to 180 days and return no more than 1,000
+time-ordered samples. Longer views are time-bucket averages; the dashboard
+states how many original readings they represent. This bound keeps week and
+all-history views responsive on a Raspberry Pi and in slower browsers without
+changing the readings retained in SQLite.
+
+History loading is isolated from the whole-application availability monitor. A
+history timeout appears beside the chart with a retry action, while controller
+status, schedules, and controls remain usable. Changing ranges cancels the
+previous history request. Background device and activity polling pauses while
+the page is hidden and refreshes when it becomes visible again.
+
 ## Ports and Hostname
 
 The defaults are host port 80 for the UI/API and host port 1883 for CE firmware

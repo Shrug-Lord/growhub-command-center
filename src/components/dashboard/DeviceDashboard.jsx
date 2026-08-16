@@ -19,6 +19,9 @@ export default function DeviceDashboard({ mac }) {
   const {
     liveSnapshot,
     history,
+    historyMeta,
+    historyLoading,
+    historyError,
     relayState,
     pendingRelayState,
     outletProfile,
@@ -123,26 +126,29 @@ export default function DeviceDashboard({ mac }) {
 
       <RecentActivity deviceId={mac} />
 
-      {history.length > 0 ? (
-        <>
-          <HistoryChart
-            data={history}
-            selectedSensors={selectedSensors}
-            timeRange={timeRange}
-            onTimeRangeChange={setTimeRange}
-            onSensorToggle={(sensor) =>
-              setSelectedSensors((previous) => ({
-                ...previous,
-                [sensor]: !previous[sensor],
-              }))
-            }
-          />
-          <DataTable data={history} selectedSensors={selectedSensors} timeRange={timeRange} />
-        </>
-      ) : (
-        <div className="border-y border-gray-800 py-8 text-center">
-          <p className="text-sm text-gray-500">No history data received yet.</p>
-        </div>
+      <HistoryChart
+        data={history}
+        meta={historyMeta}
+        loading={historyLoading}
+        error={historyError}
+        selectedSensors={selectedSensors}
+        timeRange={timeRange}
+        onTimeRangeChange={setTimeRange}
+        onRetry={() => fetchHistory(HISTORY_HOURS[timeRange])}
+        onSensorToggle={(sensor) =>
+          setSelectedSensors((previous) => ({
+            ...previous,
+            [sensor]: !previous[sensor],
+          }))
+        }
+      />
+      {history.length > 0 && (
+        <DataTable
+          data={history}
+          meta={historyMeta}
+          selectedSensors={selectedSensors}
+          timeRange={timeRange}
+        />
       )}
       <EventLog deviceId={mac} />
     </div>

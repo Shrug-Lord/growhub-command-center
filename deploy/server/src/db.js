@@ -230,8 +230,24 @@ function openDatabase(dbPath, { clock, migrationsDir } = {}) {
         WHERE device_id = ? AND observed_at >= ? AND observed_at <= ?
         ORDER BY observed_at ASC
       `),
+      getMeasurementBucketsInRange: db.prepare(`
+        SELECT
+          CAST((observed_at - @from_ms) / @bucket_ms AS INTEGER) AS bucket_index,
+          CAST(AVG(observed_at) AS INTEGER) AS taken_at,
+          AVG(temperature_c) AS temp,
+          AVG(humidity_rh) AS humidity,
+          AVG(light_level) AS light,
+          AVG(co2_ppm) AS co2,
+          COUNT(*) AS sample_count
+        FROM sensor_measurements
+        WHERE device_id = @device_id
+          AND observed_at >= @from_ms
+          AND observed_at <= @to_ms
+        GROUP BY bucket_index
+        ORDER BY bucket_index ASC
+      `),
       deleteOldMeasurements: db.prepare(`
-        DELETE FROM sensor_measurements WHERE observed_at < ?
+        DELETE FROM sensor_measurements WHERE device_id = ? AND observed_at < ?
       `),
 
       insertAlarm: db.prepare(`

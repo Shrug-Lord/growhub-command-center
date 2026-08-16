@@ -42,6 +42,7 @@ function makeDeviceState(device = null, existing = null) {
   return {
     liveSnapshot,
     history: existing?.history ?? [],
+    historyMeta: existing?.historyMeta ?? null,
     relayState: scheduleRelayState ??
       sensorRelayState ??
       existing?.relayState ?? { o1: false, o2: false, o3: false, o4: false },
@@ -111,7 +112,7 @@ export function DevicesProvider({ children }) {
     let active = true
     let inFlight = false
     async function poll() {
-      if (!active || inFlight) return
+      if (!active || inFlight || document.visibilityState === 'hidden') return
       inFlight = true
       try {
         await refreshDevices()
@@ -123,16 +124,21 @@ export function DevicesProvider({ children }) {
     }
     void poll()
     const handle = window.setInterval(poll, 5_000)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void poll()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       active = false
       window.clearInterval(handle)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [auth, refreshDevices])
 
-  const appendHistory = useCallback((mac, rows) => {
+  const appendHistory = useCallback((mac, rows, meta = null) => {
     setDeviceMap((previous) => ({
       ...previous,
-      [mac]: { ...(previous[mac] ?? makeDeviceState()), history: rows },
+      [mac]: { ...(previous[mac] ?? makeDeviceState()), history: rows, historyMeta: meta },
     }))
   }, [])
 

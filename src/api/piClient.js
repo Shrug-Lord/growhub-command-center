@@ -150,12 +150,15 @@ export async function changeAdminPassword({ currentPassword, password, passwordC
 
 export { checkReadiness }
 
-export async function getDeviceLogsRange({ deviceId, fromDate, toDate }) {
+export async function getDeviceLogsRange({ deviceId, fromDate, toDate, signal }) {
   const params = new URLSearchParams({ deviceId })
   if (fromDate) params.set('fromDate', fromDate)
   if (toDate) params.set('toDate', toDate)
-  const body = await requestJson(`/api/v1/data-logs/rangev3?${params}`, {})
-  return body.series
+  const body = await requestJson(`/api/v1/data-logs/rangev3?${params}`, {
+    signal,
+    reportAvailability: false,
+  })
+  return { series: body.series, meta: body.meta }
 }
 
 export async function createDeviceAction({ deviceId, type, input = {} }) {

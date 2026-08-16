@@ -111,6 +111,24 @@ database.stmts.insertMeasurement.run({
   actuator: '00000000',
   fw: '1.1.0C',
 });
+const e2eHistoryPoints = Number.parseInt(process.env.E2E_HISTORY_POINTS || '1', 10);
+if (Number.isInteger(e2eHistoryPoints) && e2eHistoryPoints > 1) {
+  const insertHistory = database.db.transaction(() => {
+    for (let index = 1; index < e2eHistoryPoints; index += 1) {
+      database.stmts.insertMeasurement.run({
+        device_id: MAC,
+        taken_at: Date.now() - index * 6_000,
+        temp: 22 + (index % 60) / 10,
+        humidity: 50 + (index % 100) / 10,
+        light: index % 100,
+        co2: null,
+        actuator: '00000000',
+        fw: '1.1.0C',
+      });
+    }
+  });
+  insertHistory();
+}
 
 function outletStatesFromMask(mask) {
   const bitByOutlet = { 1: 3, 2: 0, 3: 1, 4: 2 };

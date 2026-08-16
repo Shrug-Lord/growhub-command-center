@@ -5,7 +5,7 @@ import DataTable from '../components/table/DataTable.jsx'
 import { useDeviceData } from '../hooks/useDeviceData.js'
 
 function DeviceDataView({ mac }) {
-  const { history } = useDeviceData(mac)
+  const { history, historyMeta } = useDeviceData(mac)
   const [selectedSensors] = useState({
     TEMP: true,
     HUMIDITY: true,
@@ -25,7 +25,14 @@ function DeviceDataView({ mac }) {
     )
   }
 
-  return <DataTable data={history} selectedSensors={selectedSensors} timeRange="all" />
+  return (
+    <DataTable
+      data={history}
+      meta={historyMeta}
+      selectedSensors={selectedSensors}
+      timeRange="all"
+    />
+  )
 }
 
 export default function DataPage() {

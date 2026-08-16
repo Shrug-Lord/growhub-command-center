@@ -5,6 +5,29 @@ function formatDateKey(dateObj) {
   return `${y}-${m}-${d}`
 }
 
+const timeFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+})
+const dateFormatter = new Intl.DateTimeFormat('en-US')
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+const fullDateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
 export function rowsToData(rows) {
   const parsedData = rows
     .map((row) => {
@@ -62,23 +85,10 @@ export function rowsToData(rows) {
 
       return {
         timestamp: adjustedDate,
-        time: adjustedDate.toLocaleTimeString('en-US', { hour12: false }),
-        date: adjustedDate.toLocaleDateString('en-US'),
-        dateTime: adjustedDate.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
-        fullDateTime: adjustedDate.toLocaleString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
+        time: timeFormatter.format(adjustedDate),
+        date: dateFormatter.format(adjustedDate),
+        dateTime: dateTimeFormatter.format(adjustedDate),
+        fullDateTime: fullDateTimeFormatter.format(adjustedDate),
         dateKey,
         TEMP: cleanNumber(String(row.TEMP ?? '').replace('ºF', '')),
         HUMIDITY: cleanNumber(String(row.HUMIDITY ?? '').replace('%', '')),

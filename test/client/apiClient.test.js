@@ -11,6 +11,7 @@ import {
 import {
   getAuthBootstrap,
   getDevices,
+  getDeviceLogsRange,
   getServerHealth,
   login,
   setupAdmin,
@@ -121,6 +122,55 @@ test('request timeout aborts the fetch and reports an availability issue', async
     (error) => error.code === 'request_timed_out' && error.kind === 'timeout',
   )
   assert.equal(issues.at(-1).kind, 'timeout')
+})
+
+test('isolated history failures remain local instead of reporting a server outage', async (t) => {
+  useFetchMock(
+    t,
+    async (_url, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        )
+      }),
+  )
+  const issues = []
+  const unsubscribe = subscribeApiIssues((issue) => issues.push(issue))
+  t.after(unsubscribe)
+
+  await assert.rejects(
+    requestJson('/api/v1/data-logs/rangev3?deviceId=AA', {
+      timeoutMs: 5,
+      reportAvailability: false,
+    }),
+    (error) => error.code === 'request_timed_out' && error.kind === 'timeout',
+  )
+  assert.deepEqual(issues, [])
+})
+
+test('history adapter returns sampling metadata and forwards cancellation', async (t) => {
+  const controller = new AbortController()
+  useFetchMock(t, async (_url, options) => {
+    assert.equal(options.signal.aborted, false)
+    controller.abort()
+    return jsonResponse({
+      series: { temp: [[1, 24]] },
+      meta: { source_count: 10, returned_count: 1, aggregated: true, bucket_ms: 10 },
+    })
+  })
+
+  const result = await getDeviceLogsRange({
+    deviceId: 'AA',
+    fromDate: '2026-08-01T00:00:00.000Z',
+    toDate: '2026-08-02T00:00:00.000Z',
+    signal: controller.signal,
+  })
+  assert.deepEqual(result.meta, {
+    source_count: 10,
+    returned_count: 1,
+    aggregated: true,
+    bucket_ms: 10,
+  })
 })
 
 test('readiness accepts the explicit ready and not-ready health contracts', async (t) => {

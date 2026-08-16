@@ -29,6 +29,9 @@ function calcDewPoint(t, rh) {
   return parseFloat(((237.3 * g) / (17.27 - g)).toFixed(2));
 }
 
+const MAX_HISTORY_POINTS = 1_000;
+const MAX_HISTORY_RANGE_MS = 180 * 24 * 3_600_000;
+
 // ── Express setup ─────────────────────────────────────────────────────────────
 
 function createApp({
@@ -119,6 +122,10 @@ function createApp({
   app.use(express.json({ limit: '1mb' }));
 
   const DIST_DIR = config.distDir;
+  app.use(
+    '/assets',
+    express.static(path.join(DIST_DIR, 'assets'), { immutable: true, maxAge: '1y' }),
+  );
   app.use(express.static(DIST_DIR));
 
   // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -332,12 +339,41 @@ function createApp({
     if (!deviceId) return sendError(req, res, 400, 'invalid_request', 'deviceId is required.');
     const fromMs = fromDate ? new Date(fromDate).getTime() : clock() - 24 * 3_600_000;
     const toMs = toDate ? new Date(toDate).getTime() : clock();
-    const rows = stmts.getMeasurementsInRange.all(deviceId, fromMs, toMs);
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+      return sendError(req, res, 400, 'invalid_history_range', 'History dates must be valid.');
+    }
+    if (fromMs > toMs) {
+      return sendError(
+        req,
+        res,
+        400,
+        'invalid_history_range',
+        'History start must not be after its end.',
+      );
+    }
+    if (toMs - fromMs > MAX_HISTORY_RANGE_MS) {
+      return sendError(
+        req,
+        res,
+        400,
+        'history_range_too_large',
+        'History is limited to 180 days per request.',
+      );
+    }
+    const bucketMs = Math.max(1, Math.ceil((toMs - fromMs + 1) / MAX_HISTORY_POINTS));
+    const rows = stmts.getMeasurementBucketsInRange.all({
+      device_id: deviceId,
+      from_ms: fromMs,
+      to_ms: toMs,
+      bucket_ms: bucketMs,
+    });
     const series = { temp: [], rh: [], light: [], co2: [], vpd: [], dewPoint: [] };
+    let sourceCount = 0;
     for (const row of rows) {
       const ts = row.taken_at,
         t = row.temp ?? 0,
         rh = row.humidity ?? 0;
+      sourceCount += row.sample_count;
       series.temp.push([ts, t]);
       series.rh.push([ts, rh]);
       series.light.push([ts, row.light ?? 0]);
@@ -345,7 +381,15 @@ function createApp({
       series.vpd.push([ts, calcVPD(t, rh)]);
       series.dewPoint.push([ts, calcDewPoint(t, rh)]);
     }
-    return res.json({ series });
+    return res.json({
+      series,
+      meta: {
+        source_count: sourceCount,
+        returned_count: rows.length,
+        aggregated: sourceCount > rows.length,
+        bucket_ms: bucketMs,
+      },
+    });
   });
 
   app.get('/api/v1/data-logs/device/:deviceId/request-csv', requireAuth, (_req, res) => {
@@ -694,9 +738,13 @@ function startRetentionSweep({ stmts, logger, clock, intervalMs, setIntervalFn }
       const row = stmts.getSetting.get('retention_days');
       const days = row ? Number.parseInt(row.value, 10) : 365;
       if (!Number.isInteger(days) || days <= 0) return;
-      const result = stmts.deleteOldMeasurements.run(clock() - days * 86_400_000);
-      if (result.changes > 0) {
-        logger.info('measurement_retention_completed', { deleted_count: result.changes });
+      const cutoff = clock() - days * 86_400_000;
+      let deletedCount = 0;
+      for (const device of stmts.getKnownDeviceIds.all()) {
+        deletedCount += stmts.deleteOldMeasurements.run(device.id, cutoff).changes;
+      }
+      if (deletedCount > 0) {
+        logger.info('measurement_retention_completed', { deleted_count: deletedCount });
       }
     } catch (error) {
       logger.error('measurement_retention_failed', { error });

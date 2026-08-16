@@ -286,7 +286,6 @@ test('read APIs return direct named resources', async () => {
 
     const cases = [
       ['/api/v1/session', 'session'],
-      ['/api/v1/data-logs/rangev3?deviceId=AABBCCDDEEFF', 'series'],
       [`/api/v1/data-logs/device/${DEVICE_ID}/request-csv`, 'export'],
       [`/api/v1/iot-devices/${DEVICE_ID}`, 'device'],
       ['/api/v1/devices', 'devices'],
@@ -308,6 +307,12 @@ test('read APIs return direct named resources', async () => {
       const { body } = await request(path);
       assertOnlyResource(body, resource);
     }
+
+    const history = await request('/api/v1/data-logs/rangev3?deviceId=AABBCCDDEEFF');
+    assert.deepEqual(Object.keys(history.body), ['series', 'meta']);
+    assert.equal(history.body.meta.source_count, 1);
+    assert.equal(history.body.meta.returned_count, 1);
+    assert.equal(history.body.meta.aggregated, false);
 
     const activity = await request(`/api/v1/devices/${DEVICE_ID}/activity`);
     assert.deepEqual(Object.keys(activity.body), ['activity', 'next_cursor']);
@@ -344,6 +349,57 @@ test('read APIs return direct named resources', async () => {
         (entry) => entry.admin_identity === null || entry.admin_identity === 'admin',
       ),
     );
+  });
+});
+
+test('history API bounds large ranges with truthful aggregation metadata', async () => {
+  await withFixture(async ({ database, request }) => {
+    const now = Date.parse('2026-07-13T12:00:00.000Z');
+    const insert = database.stmts.insertMeasurement;
+    database.db.transaction(() => {
+      for (let index = 1; index <= 10_080; index += 1) {
+        insert.run({
+          device_id: DEVICE_ID,
+          taken_at: now - index * 60_000,
+          temp: index % 2 === 0 ? 20 : 30,
+          humidity: 50,
+          light: index % 100,
+          co2: 800,
+          actuator: '0',
+          fw: '1.1.0C',
+        });
+      }
+    })();
+
+    const fromDate = new Date(now - 7 * 86_400_000).toISOString();
+    const toDate = new Date(now).toISOString();
+    const result = await request(
+      `/api/v1/data-logs/rangev3?deviceId=${DEVICE_ID}&fromDate=${fromDate}&toDate=${toDate}`,
+    );
+
+    assert.equal(result.body.meta.source_count, 10_081);
+    assert.ok(result.body.meta.returned_count <= 1_000);
+    assert.equal(result.body.meta.aggregated, true);
+    assert.equal(result.body.meta.bucket_ms, 604_801);
+    for (const values of Object.values(result.body.series)) {
+      assert.equal(values.length, result.body.meta.returned_count);
+    }
+    assert.ok(JSON.stringify(result.body).length < 250_000);
+  });
+});
+
+test('history API rejects invalid and over-broad ranges', async () => {
+  await withFixture(async ({ request }) => {
+    const cases = [
+      `deviceId=${DEVICE_ID}&fromDate=not-a-date`,
+      `deviceId=${DEVICE_ID}&fromDate=2026-07-14T00:00:00.000Z&toDate=2026-07-13T00:00:00.000Z`,
+      `deviceId=${DEVICE_ID}&fromDate=2025-01-01T00:00:00.000Z&toDate=2026-01-01T00:00:00.000Z`,
+    ];
+    for (const query of cases) {
+      const result = await request(`/api/v1/data-logs/rangev3?${query}`, { allowError: true });
+      assert.equal(result.response.status, 400);
+      assert.match(result.body.error.code, /history_range|invalid_history_range/);
+    }
   });
 });
 

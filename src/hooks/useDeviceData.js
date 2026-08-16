@@ -1,14 +1,14 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDevices } from '../contexts/DevicesContext.jsx'
 import { createDeviceAction, getDeviceLogsRange } from '../api/piClient.js'
 import { tryIngestLogsFromApi } from '../api/normalizeData.js'
-import { useRecoveryTask } from '../contexts/ServerAvailabilityContext.jsx'
 
 export function useDeviceData(mac) {
   const { getDevice, appendHistory, refreshDevices } = useDevices()
   const {
     liveSnapshot,
     history,
+    historyMeta,
     relayState,
     pendingRelayState,
     lastSeen,
@@ -26,10 +26,28 @@ export function useDeviceData(mac) {
     labelDrift,
     actionAvailability,
   } = getDevice(mac)
+  const historyRequestRef = useRef(null)
+  const historySequenceRef = useRef(0)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(null)
+
+  useEffect(
+    () => () => {
+      historySequenceRef.current += 1
+      historyRequestRef.current?.abort()
+    },
+    [mac],
+  )
 
   const fetchHistory = useCallback(
-    async (hours = 24 * 180) => {
+    async (hours = 24) => {
       if (!mac) return
+      historyRequestRef.current?.abort()
+      const controller = new AbortController()
+      historyRequestRef.current = controller
+      const sequence = ++historySequenceRef.current
+      setHistoryLoading(true)
+      setHistoryError(null)
       try {
         const toDate = new Date()
         const fromDate = new Date(toDate.getTime() - hours * 60 * 60 * 1000)
@@ -37,19 +55,32 @@ export function useDeviceData(mac) {
           deviceId: mac,
           fromDate: fromDate.toISOString(),
           toDate: toDate.toISOString(),
+          signal: controller.signal,
         })
-        const normalized = tryIngestLogsFromApi(result)
+        const normalized = tryIngestLogsFromApi(result.series)
         if (normalized && normalized.parsedData) {
-          appendHistory(mac, normalized.parsedData)
+          if (sequence === historySequenceRef.current) {
+            appendHistory(mac, normalized.parsedData, result.meta)
+          }
+        } else if (result.meta?.returned_count === 0 && sequence === historySequenceRef.current) {
+          appendHistory(mac, [], result.meta)
+        } else {
+          throw new Error('Command Center returned invalid history data.')
         }
       } catch (e) {
-        console.error('fetchHistory failed:', e)
+        if (e?.code !== 'request_cancelled' && sequence === historySequenceRef.current) {
+          console.error('fetchHistory failed:', e)
+          setHistoryError(e)
+        }
+      } finally {
+        if (sequence === historySequenceRef.current) {
+          setHistoryLoading(false)
+          historyRequestRef.current = null
+        }
       }
     },
     [mac, appendHistory],
   )
-
-  useRecoveryTask(`history-${mac}`, fetchHistory, 100)
 
   const sendMode = useCallback(
     async (mode) => {
@@ -104,6 +135,9 @@ export function useDeviceData(mac) {
   return {
     liveSnapshot,
     history,
+    historyMeta,
+    historyLoading,
+    historyError,
     relayState,
     pendingRelayState,
     lastSeen,

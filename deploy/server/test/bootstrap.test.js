@@ -401,3 +401,42 @@ test('retention failures are logged and do not escape the scheduled callback', (
   assert.equal(failures[0].event, 'measurement_retention_failed');
   assert.equal(failures[0].fields.error.code, 'SQLITE_BUSY');
 });
+
+test('retention prunes each device through the indexed device-time key', () => {
+  let sweep;
+  const calls = [];
+  const messages = [];
+  startRetentionSweep({
+    stmts: {
+      getSetting: statement({ get: { value: '30' } }),
+      getKnownDeviceIds: statement({ all: [{ id: 'AA' }, { id: 'BB' }] }),
+      deleteOldMeasurements: {
+        run(deviceId, cutoff) {
+          calls.push({ deviceId, cutoff });
+          return { changes: deviceId === 'AA' ? 2 : 3 };
+        },
+      },
+    },
+    logger: {
+      info(event, fields) {
+        messages.push({ event, fields });
+      },
+      error() {},
+    },
+    clock: () => 40 * 86_400_000,
+    intervalMs: 60_000,
+    setIntervalFn(callback) {
+      sweep = callback;
+      return { unref() {} };
+    },
+  });
+
+  sweep();
+  assert.deepEqual(calls, [
+    { deviceId: 'AA', cutoff: 10 * 86_400_000 },
+    { deviceId: 'BB', cutoff: 10 * 86_400_000 },
+  ]);
+  assert.deepEqual(messages, [
+    { event: 'measurement_retention_completed', fields: { deleted_count: 5 } },
+  ]);
+});

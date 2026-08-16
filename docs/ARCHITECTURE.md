@@ -72,6 +72,15 @@ Mosquitto retained state lives in a separate named volume. A valid backup
 contains both volumes because restoring only one can produce an inconsistent
 view.
 
+Sensor history remains stored as individual firmware readings under the
+configured retention policy. Browser range requests are capped at 180 days and
+the server groups each response into at most 1,000 time buckets using the
+indexed device/time key. Responses identify both the returned bucket count and
+the number of original readings represented, so the UI and CSV export can label
+averaged history accurately. A history request is an isolated dashboard read:
+failure leaves device control and server availability unchanged, and selecting
+a new range cancels the older request.
+
 ## Release Updates
 
 The server polls only the repository's latest stable tagged GitHub Release and

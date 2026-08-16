@@ -1,16 +1,10 @@
 import React, { useState, useMemo } from 'react'
 import { Download } from 'lucide-react'
+import { useTempUnit } from '../../contexts/TempUnitContext.jsx'
+import { toDisplayTemp } from '../../utils/temperature.js'
 
-const sensorUnits = {
-  TEMP: '°F',
-  HUMIDITY: '%',
-  LIGHT: '',
-  VPD: 'kPa',
-  DP: '°F',
-  CO2: 'ppm',
-}
-
-export default function DataTable({ data, selectedSensors, timeRange }) {
+export default function DataTable({ data, meta, selectedSensors, timeRange }) {
+  const { unit } = useTempUnit()
   const [tableSearch, setTableSearch] = useState('')
   const [tableSortColumn, setTableSortColumn] = useState('timestamp')
   const [tableSortDirection, setTableSortDirection] = useState('desc')
@@ -32,8 +26,18 @@ export default function DataTable({ data, selectedSensors, timeRange }) {
     return data.filter((item) => item.timestamp >= startDate && item.timestamp <= endDate)
   }, [data, timeRange])
 
+  const displayRows = useMemo(
+    () =>
+      filteredData.map((row) => ({
+        ...row,
+        TEMP: toDisplayTemp(row.TEMP, unit),
+        DP: toDisplayTemp(row.DP, unit),
+      })),
+    [filteredData, unit],
+  )
+
   const processedTableData = useMemo(() => {
-    let processed = [...filteredData]
+    let processed = [...displayRows]
 
     if (tableSearch) {
       const search = tableSearch.toLowerCase()
@@ -56,7 +60,7 @@ export default function DataTable({ data, selectedSensors, timeRange }) {
     })
 
     return processed
-  }, [filteredData, tableSearch, tableSortColumn, tableSortDirection, selectedSensors])
+  }, [displayRows, tableSearch, tableSortColumn, tableSortDirection, selectedSensors])
 
   function handleSort(column) {
     if (tableSortColumn === column) {
@@ -69,7 +73,12 @@ export default function DataTable({ data, selectedSensors, timeRange }) {
 
   function exportToCSV() {
     const activeSensors = Object.keys(selectedSensors).filter((s) => selectedSensors[s])
-    const headers = ['Date & Time', ...activeSensors]
+    const headers = [
+      'Date & Time',
+      ...activeSensors.map((sensor) =>
+        sensorUnits[sensor] ? `${sensor} (${sensorUnits[sensor]})` : sensor,
+      ),
+    ]
     const rows = processedTableData.map((row) => [
       row.fullDateTime,
       ...activeSensors.map((s) => row[s]?.toFixed(2) ?? ''),
@@ -85,13 +94,29 @@ export default function DataTable({ data, selectedSensors, timeRange }) {
   }
 
   const activeSensors = Object.keys(selectedSensors).filter((s) => selectedSensors[s])
+  const sensorUnits = {
+    TEMP: unit === 'F' ? '°F' : '°C',
+    HUMIDITY: '%',
+    LIGHT: '',
+    VPD: 'kPa',
+    DP: unit === 'F' ? '°F' : '°C',
+    CO2: 'ppm',
+  }
   const displayData =
     tablePageSize === -1 ? processedTableData : processedTableData.slice(0, tablePageSize)
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-white font-medium text-sm">Raw Data</h2>
+        <div>
+          <h2 className="text-white font-medium text-sm">History samples</h2>
+          {meta?.aggregated && (
+            <p className="mt-0.5 text-xs text-gray-500">
+              {meta.returned_count.toLocaleString()} time-bucket averages represent{' '}
+              {meta.source_count.toLocaleString()} original readings.
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <input
             type="text"

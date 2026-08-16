@@ -176,6 +176,47 @@ test('runtime statements operate against the CE domain tables', () => {
       actuator: '0000',
     },
   ]);
+  stmts.insertMeasurement.run({
+    device_id: 'AABBCCDDEEFF',
+    taken_at: now + 100,
+    temp: 25.5,
+    humidity: 57,
+    light: 200,
+    co2: 1_000,
+    actuator: '0000',
+    fw: '1.1.0C',
+  });
+  assert.deepEqual(
+    stmts.getMeasurementBucketsInRange.all({
+      device_id: 'AABBCCDDEEFF',
+      from_ms: now,
+      to_ms: now + 999,
+      bucket_ms: 1_000,
+    }),
+    [
+      {
+        bucket_index: 0,
+        taken_at: 1_050,
+        temp: 25,
+        humidity: 56,
+        light: 150,
+        co2: 900,
+        sample_count: 2,
+      },
+    ],
+  );
+  assert.match(
+    database.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT observed_at FROM sensor_measurements
+         WHERE device_id = ? AND observed_at >= ? AND observed_at <= ?`,
+      )
+      .all('AABBCCDDEEFF', 0, 2_000)
+      .map((row) => row.detail)
+      .join(' '),
+    /idx_sensor_measurements_device_time/,
+  );
 
   const scheduleInfo = stmts.createSchedule.run({
     name: 'Flower',

@@ -37,9 +37,12 @@ function publishApiIssue(error) {
   for (const listener of availabilityListeners) listener(error)
 }
 
-function availabilityError({ status = 0, code, message, kind, requestId, cause }) {
+function availabilityError(
+  { status = 0, code, message, kind, requestId, cause },
+  { reportAvailability = true } = {},
+) {
   const error = new ApiError({ status, code, message, kind, requestId, cause })
-  publishApiIssue(error)
+  if (reportAvailability) publishApiIssue(error)
   return error
 }
 
@@ -81,6 +84,7 @@ async function readJson(response) {
 export async function requestJson(path, options = {}) {
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    reportAvailability = true,
     signal: externalSignal,
     headers: suppliedHeaders,
     ...fetchOptions
@@ -115,19 +119,25 @@ export async function requestJson(path, options = {}) {
       })
     }
     if (abort.didTimeOut()) {
-      throw availabilityError({
-        code: 'request_timed_out',
-        message: 'Command Center did not respond in time.',
-        kind: 'timeout',
-        cause,
-      })
+      throw availabilityError(
+        {
+          code: 'request_timed_out',
+          message: 'Command Center did not respond in time.',
+          kind: 'timeout',
+          cause,
+        },
+        { reportAvailability },
+      )
     }
-    throw availabilityError({
-      code: 'server_unavailable',
-      message: 'Command Center is unavailable.',
-      kind: 'network',
-      cause,
-    })
+    throw availabilityError(
+      {
+        code: 'server_unavailable',
+        message: 'Command Center is unavailable.',
+        kind: 'network',
+        cause,
+      },
+      { reportAvailability },
+    )
   } finally {
     abort.cleanup()
   }
@@ -144,18 +154,21 @@ export async function requestJson(path, options = {}) {
         requestId: body.request_id || requestId,
         kind: body.error.code === 'server_shutting_down' ? 'shutdown' : 'http',
       })
-      if (error.kind === 'shutdown') publishApiIssue(error)
+      if (error.kind === 'shutdown' && reportAvailability) publishApiIssue(error)
       throw error
     }
 
     if ([502, 503, 504].includes(response.status)) {
-      throw availabilityError({
-        status: response.status,
-        code: 'server_unavailable',
-        message: 'Command Center is unavailable.',
-        kind: 'proxy',
-        requestId,
-      })
+      throw availabilityError(
+        {
+          status: response.status,
+          code: 'server_unavailable',
+          message: 'Command Center is unavailable.',
+          kind: 'proxy',
+          requestId,
+        },
+        { reportAvailability },
+      )
     }
 
     throw new ApiError({
@@ -167,13 +180,16 @@ export async function requestJson(path, options = {}) {
   }
 
   if (body === null) {
-    throw availabilityError({
-      status: response.status,
-      code: 'invalid_response',
-      message: 'Command Center returned an invalid response.',
-      kind: 'protocol',
-      requestId,
-    })
+    throw availabilityError(
+      {
+        status: response.status,
+        code: 'invalid_response',
+        message: 'Command Center returned an invalid response.',
+        kind: 'protocol',
+        requestId,
+      },
+      { reportAvailability },
+    )
   }
 
   return body

@@ -53,9 +53,16 @@ export default function RecentActivity({ deviceId }) {
 
   useRecoveryTask(`activity-${deviceId}`, load, 120)
   useEffect(() => {
-    void load()
-    const handle = window.setInterval(load, 5_000)
-    return () => window.clearInterval(handle)
+    const poll = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    poll()
+    const handle = window.setInterval(poll, 15_000)
+    document.addEventListener('visibilitychange', poll)
+    return () => {
+      window.clearInterval(handle)
+      document.removeEventListener('visibilitychange', poll)
+    }
   }, [load])
 
   return (
