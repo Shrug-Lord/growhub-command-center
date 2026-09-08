@@ -374,6 +374,40 @@ test('restart recovery interrupts prepared actions and never republishes submitt
   );
 });
 
+test('restart recovery preserves old actions referenced by device setup reviews', async (t) => {
+  const { database, engine } = createHarness(t);
+  const oldActionId = '00000000-0000-4000-8000-000000000002';
+  database.db
+    .prepare(
+      `
+      INSERT INTO device_actions (
+        id, device_id, type, status, reason_code, context_json, input_json,
+        required_state_keys_json, base_state_revisions_json, base_error_sequences_json,
+        publish_state, completed_at, created_at, updated_at
+      ) VALUES (?, ?, 'confirm_device_setup', 'completed', 'confirmed', '{}', '{}',
+        '[]', '{}', '{}', 'not_applicable', 1, 1, 1)
+    `,
+    )
+    .run(oldActionId, MAC);
+  database.db
+    .prepare(
+      `
+      INSERT INTO device_setup_reviews (
+        device_id, outlet_fingerprint, reviewed_at, action_id
+      ) VALUES (?, ?, 1, ?)
+    `,
+    )
+    .run(MAC, '0'.repeat(64), oldActionId);
+
+  assert.doesNotThrow(() => engine.recover());
+  assert.equal(
+    database.db
+      .prepare('SELECT count(*) AS count FROM device_actions WHERE id = ?')
+      .get(oldActionId).count,
+    1,
+  );
+});
+
 test('action history uses stable opaque cursor pagination', async (t) => {
   const { database, engine, advance } = createHarness(t);
   seedState(database, 'schedule_state', schedulePayload({ mode: 'manual' }), 1);

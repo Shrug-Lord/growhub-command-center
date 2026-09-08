@@ -375,6 +375,10 @@ function createDeviceActionEngine({
     deleteOldTerminal: db.prepare(`
       DELETE FROM device_actions
       WHERE status != 'pending' AND completed_at < ?
+        AND NOT EXISTS (
+          SELECT 1 FROM device_setup_reviews
+          WHERE device_setup_reviews.action_id = device_actions.id
+        )
     `),
     trimTerminal: db.prepare(`
       DELETE FROM device_actions
@@ -383,6 +387,10 @@ function createDeviceActionEngine({
         WHERE device_id = @device_id AND status != 'pending'
         ORDER BY created_at DESC, id DESC LIMIT 100
       )
+        AND NOT EXISTS (
+          SELECT 1 FROM device_setup_reviews
+          WHERE device_setup_reviews.action_id = device_actions.id
+        )
     `),
   };
 
