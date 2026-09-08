@@ -4,6 +4,42 @@ Glossary for the Growhub Command Center context. Implementation details live in 
 
 ## Language
 
+**Grow journal**:
+A device's record of grow phases, observations, and cultivation work, organized into named grows, with earlier entries preserved until explicitly assigned to a grow. Device connectivity and schedule-load activity belong in Recent activity.
+_Avoid_: Device activity log, telemetry log
+
+**Grow**:
+A named cultivation cycle associated with one device, with its own journal entries and phase timeline. Past grows remain available when a new grow begins.
+_Avoid_: Schedule template, grow phase
+
+**Active grow**:
+The current grow being tracked for a device; a device has at most one active grow at a time.
+_Avoid_: Active device schedule, running template
+
+**Start grow**:
+An explicit journal action that begins a named grow with an initial phase and actual start date and time. Starting a grow is separate from loading a device schedule.
+_Avoid_: Load schedule, start automation
+
+**Grow phase**:
+A stage within a grow, chosen from the default phase names or named by the user, that can be skipped or revisited. Each occurrence has its own dates and duration; its name and actual timestamps may be corrected even after the grow ends without reopening the grow.
+_Avoid_: Schedule template, required grow step
+
+**Phase change**:
+A journal entry marking the start of a grow phase occurrence at its actual date and time. A phase change is an explicit grow record, separate from loading a device schedule.
+_Avoid_: Schedule load, template switch
+
+**End grow**:
+An explicit journal action that records when a grow finished and fixes the end of its duration and final phase. Entering Harvest does not end a grow, and ending a grow does not change device automation.
+_Avoid_: Stop schedule, all off, enter Harvest
+
+**Recent activity**:
+The device's operational timeline, including device action attempts and outcomes, schedule loads, online/offline transitions, and observed management-address changes.
+_Avoid_: Grow journal, cultivation notes
+
+**Device management address**:
+The LAN address reported by a Growhub for opening its own management page. It may change while the device's MAC-based identity remains the same.
+_Avoid_: Broker address, Command Center address, device identity
+
 **CE firmware**:
 The Community Edition firmware that runs on a NIWA Growhub and owns the controller's local runtime behavior. Command Center integrates with CE firmware but is not required for a Growhub to keep running its active automation.
 

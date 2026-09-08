@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Activity, AlertTriangle, CheckCircle2, Clock3, Loader2, XCircle } from 'lucide-react'
+import CollapsibleSection from './CollapsibleSection.jsx'
+import { useDevices } from '../../contexts/DevicesContext.jsx'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, XCircle } from 'lucide-react'
 import { getDeviceActivity } from '../../api/piClient.js'
 import { useRecoveryTask } from '../../contexts/ServerAvailabilityContext.jsx'
 
@@ -30,49 +32,61 @@ function iconFor(item) {
 
 function labelFor(item) {
   if (item.kind === 'device_event') {
-    return item.device_event.type === 'schedule_drift_detected'
-      ? 'Firmware schedule drift detected'
-      : 'Schedule drift reconciled'
+    const event = item.device_event
+    const labels = {
+      device_online: 'Device came online',
+      device_offline: 'Device went offline',
+      management_address_changed: 'Management address changed',
+      schedule_loaded: 'Schedule loaded',
+      schedule_removed: 'Schedule removed',
+      schedule_drift_detected: 'Firmware schedule drift detected',
+      schedule_drift_reconciled: 'Schedule drift reconciled',
+    }
+    return labels[event.type] ?? event.context?.label ?? event.type.replaceAll('_', ' ')
+  }
+  if (['load_schedule', 'reload_expected_schedule'].includes(item.action.type)) {
+    const action = item.action
+    const name = action.context?.template_name ?? 'schedule'
+    return action.status === 'completed'
+      ? 'Loaded ' + name
+      : action.status === 'pending'
+        ? 'Loading ' + name
+        : 'Schedule load ' + action.status.replaceAll('_', ' ') + ': ' + name
   }
   return ACTION_LABELS[item.action.type] ?? item.action.type.replaceAll('_', ' ')
 }
 
 export default function RecentActivity({ deviceId }) {
+  const { pollRevision } = useDevices()
+  const sequence = useRef(0)
   const [items, setItems] = useState([])
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
+    const current = ++sequence.current
     try {
       const result = await getDeviceActivity({ deviceId, limit: 12 })
+      if (sequence.current !== current) return
       setItems(result.activity)
       setError(null)
     } catch (requestError) {
-      setError(requestError.message)
+      if (sequence.current === current) setError(requestError.message)
     }
   }, [deviceId])
 
   useRecoveryTask(`activity-${deviceId}`, load, 120)
   useEffect(() => {
-    const poll = () => {
-      if (document.visibilityState === 'visible') void load()
-    }
-    poll()
-    const handle = window.setInterval(poll, 15_000)
-    document.addEventListener('visibilitychange', poll)
-    return () => {
-      window.clearInterval(handle)
-      document.removeEventListener('visibilitychange', poll)
-    }
-  }, [load])
+    void load()
+  }, [load, pollRevision])
+  useEffect(
+    () => () => {
+      sequence.current++
+    },
+    [deviceId],
+  )
 
   return (
-    <section className="border-y border-gray-800 py-5" aria-labelledby="recent-activity-title">
-      <div className="flex items-center gap-2">
-        <Activity className="h-4 w-4 text-gray-500" />
-        <h2 id="recent-activity-title" className="text-sm font-semibold text-white">
-          Recent activity
-        </h2>
-      </div>
+    <CollapsibleSection title="Recent activity" storageKey={deviceId + ':activity'}>
       {items.length === 0 && !error && (
         <p className="mt-3 text-sm text-gray-500">No device actions recorded yet.</p>
       )}
@@ -90,6 +104,14 @@ export default function RecentActivity({ deviceId }) {
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-gray-200">{labelFor(item)}</p>
+                {item.device_event?.type === 'management_address_changed' && (
+                  <p className="text-xs text-gray-400">
+                    {item.device_event.context.previous_ip} → {item.device_event.context.ip}
+                  </p>
+                )}
+                {action && (
+                  <p className="text-xs text-gray-400">{action.status.replaceAll('_', ' ')}</p>
+                )}
                 {action?.reason_code && (
                   <p className="text-xs text-gray-500">{action.reason_code.replaceAll('_', ' ')}</p>
                 )}
@@ -111,6 +133,6 @@ export default function RecentActivity({ deviceId }) {
           {error}
         </p>
       )}
-    </section>
+    </CollapsibleSection>
   )
 }

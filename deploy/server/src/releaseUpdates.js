@@ -31,7 +31,8 @@ function parseJson(value, fallback = null) {
 
 function parseVersion(value) {
   const match = RELEASE_TAG.exec(`v${String(value).replace(/^v/, '')}`);
-  return match ? match.slice(1).map(Number) : null;
+  const parts = match ? match.slice(1).map(Number) : null;
+  return parts?.every(Number.isSafeInteger) ? parts : null;
 }
 
 function compareVersions(left, right) {
@@ -52,7 +53,8 @@ function normalizeRelease(value) {
     value.prerelease === true ||
     !RELEASE_TAG.test(value.tag_name) ||
     typeof value.html_url !== 'string' ||
-    !value.html_url.startsWith('https://github.com/Shrug-Lord/growhub-command-center/releases/tag/')
+    value.html_url !==
+      `https://github.com/Shrug-Lord/growhub-command-center/releases/tag/${value.tag_name}`
   ) {
     throw new Error('The repository returned an invalid latest release.');
   }
@@ -100,6 +102,13 @@ function createReleaseUpdateService({
   clearIntervalFn = clearInterval,
 } = {}) {
   const { db } = database;
+  const oldRequest = readJsonFile(path.join(updateRequestDir, 'request.json'));
+  if (oldRequest && (oldRequest.requested_by !== 'user' || oldRequest.confirmed !== true)) {
+    fs.unlinkSync(path.join(updateRequestDir, 'request.json'));
+    db.prepare(
+      'UPDATE command_center_update_state SET last_requested_tag = NULL WHERE singleton = 1',
+    ).run();
+  }
   const sql = {
     get: db.prepare('SELECT * FROM command_center_update_state WHERE singleton = 1'),
     cacheCheck: db.prepare(`
@@ -118,10 +127,9 @@ function createReleaseUpdateService({
       UPDATE command_center_update_state
       SET dismissed_tag = @tag, updated_at = @updated_at WHERE singleton = 1
     `),
-    setAutoInstall: db.prepare(`
+    setChecksEnabled: db.prepare(`
       UPDATE command_center_update_state
-      SET auto_install = @auto_install,
-          dismissed_tag = CASE WHEN @auto_install = 1 THEN NULL ELSE dismissed_tag END,
+      SET checks_enabled = @checks_enabled, auto_install = 0,
           updated_at = @updated_at
       WHERE singleton = 1
     `),
@@ -131,6 +139,7 @@ function createReleaseUpdateService({
     `),
   };
   let intervalHandle = null;
+  let nextBackground = clock() + Math.floor(Math.random() * 60_000);
   let inFlight = null;
   let activeController = null;
   let closed = false;
@@ -169,14 +178,15 @@ function createReleaseUpdateService({
           ? { state: 'requested', tag: release.tag, requested_at: null }
           : null;
     const dismissed = available && row.dismissed_tag === release.tag;
-    const autoInstall = row.auto_install === 1;
+    const deferred = row.later_tag === release?.tag && row.later_until > clock();
     return {
       current_version: currentVersion,
       latest_release: release,
       update_available: available,
-      prompt_available: available && !dismissed && !autoInstall && !requested,
+      prompt_available: available && !dismissed && !deferred && !requested,
       dismissed,
-      auto_install: autoInstall,
+      checks_enabled: row.checks_enabled === 1,
+      deferred,
       checked_at: row.last_checked_at ? new Date(row.last_checked_at).toISOString() : null,
       check_error: row.last_check_error,
       agent: {
@@ -187,7 +197,7 @@ function createReleaseUpdateService({
     };
   }
 
-  function requestInstall(tag, requestedBy = 'user', { allowRepeat = true } = {}) {
+  function requestInstall(tag, confirmed = false) {
     const current = status();
     if (!current.update_available || current.latest_release?.tag !== tag) {
       throw new ReleaseUpdateError(409, 'update_not_available', 'That release is not available.');
@@ -199,7 +209,15 @@ function createReleaseUpdateService({
         'The Pi update service must be installed once before Command Center can apply updates.',
       );
     }
-    if (!allowRepeat && current.install?.tag === tag) return current;
+    if (confirmed !== true)
+      throw new ReleaseUpdateError(
+        400,
+        'confirmation_required',
+        'Confirm the version and restart impact before updating.',
+      );
+    const active = agentState().request;
+    if (active && ['requested', 'installing'].includes(active.state))
+      throw new ReleaseUpdateError(409, 'update_busy', 'An installation is already in progress.');
     const requestedAt = new Date(clock()).toISOString();
     writeJsonAtomic(updateRequestDir, 'request.json', {
       v: 1,
@@ -207,24 +225,12 @@ function createReleaseUpdateService({
       version: current.latest_release.version,
       release_url: current.latest_release.url,
       requested_at: requestedAt,
-      requested_by: requestedBy,
+      requested_by: 'user',
+      confirmed: true,
     });
     sql.markRequested.run({ tag, updated_at: clock() });
-    logger.info('command_center_update_requested', { tag, requested_by: requestedBy });
+    logger.info('command_center_update_requested', { tag, requested_by: 'user', confirmed: true });
     return status();
-  }
-
-  function maybeRequestAutomatic() {
-    const current = status();
-    if (
-      current.auto_install &&
-      current.update_available &&
-      current.agent.installed &&
-      !current.install
-    ) {
-      return requestInstall(current.latest_release.tag, 'automatic', { allowRepeat: false });
-    }
-    return current;
   }
 
   async function performCheck() {
@@ -249,7 +255,7 @@ function createReleaseUpdateService({
         cached_release_json: JSON.stringify(release),
         last_checked_at: checkedAt,
       });
-      return maybeRequestAutomatic();
+      return status();
     } catch (error) {
       if (closed) return null;
       const message = error?.name === 'AbortError' ? 'Release check timed out.' : error.message;
@@ -264,8 +270,9 @@ function createReleaseUpdateService({
 
   function check({ force = false } = {}) {
     const row = sql.get.get();
+    if (!force && !row.checks_enabled) return Promise.resolve(status());
     if (!force && row.last_checked_at && clock() - row.last_checked_at < checkIntervalMs) {
-      return Promise.resolve(maybeRequestAutomatic());
+      return Promise.resolve(status());
     }
     if (!inFlight) {
       inFlight = performCheck().finally(() => {
@@ -275,31 +282,41 @@ function createReleaseUpdateService({
     return inFlight;
   }
 
-  function dismiss(tag) {
+  function dismiss(tag, mode = 'skip') {
     const current = status();
     if (!current.update_available || current.latest_release?.tag !== tag) {
       throw new ReleaseUpdateError(409, 'update_not_available', 'That release is not available.');
     }
-    sql.dismiss.run({ tag, updated_at: clock() });
+    if (!['skip', 'later'].includes(mode))
+      throw new ReleaseUpdateError(400, 'invalid_dismissal', 'Choose Later or Skip this version.');
+    if (mode === 'later')
+      db.prepare(
+        'UPDATE command_center_update_state SET later_tag = ?, later_until = ? WHERE singleton = 1',
+      ).run(tag, clock() + 86_400_000);
+    else sql.dismiss.run({ tag, updated_at: clock() });
     return status();
   }
 
-  async function setAutoInstall(enabled) {
+  async function setChecksEnabled(enabled) {
     if (typeof enabled !== 'boolean') {
       throw new ReleaseUpdateError(
         400,
         'invalid_update_settings',
-        'auto_install must be true or false.',
+        'checks_enabled must be true or false.',
       );
     }
-    sql.setAutoInstall.run({ auto_install: enabled ? 1 : 0, updated_at: clock() });
-    return maybeRequestAutomatic();
+    sql.setChecksEnabled.run({ checks_enabled: enabled ? 1 : 0, updated_at: clock() });
+    nextBackground = clock() + Math.floor(Math.random() * 60_000);
+    return status();
   }
 
   function start() {
     closed = false;
-    void check({ force: false });
-    intervalHandle = setIntervalFn(() => void check({ force: true }), checkIntervalMs);
+    intervalHandle = setIntervalFn(() => {
+      if (!sql.get.get().checks_enabled || clock() < nextBackground) return;
+      nextBackground = clock() + checkIntervalMs + Math.floor(Math.random() * 60_000);
+      void check({ force: true });
+    }, 1000);
     intervalHandle?.unref?.();
   }
 
@@ -316,7 +333,7 @@ function createReleaseUpdateService({
     close,
     dismiss,
     requestInstall,
-    setAutoInstall,
+    setChecksEnabled,
     start,
     status,
   };

@@ -40,6 +40,7 @@ Command Center is authoritative for:
 - Expected active schedule links and drift episodes
 - Device setup review
 - Device action history and bounded device events
+- Named grows, journal entries, phase timelines, and schedule follow-up decisions
 - Local admin sessions and diagnostics metadata
 
 Command Center never needs to remain connected for firmware automation to run.
@@ -79,17 +80,81 @@ indexed device/time key. Responses identify both the returned bucket count and
 the number of original readings represented, so the UI and CSV export can label
 averaged history accurately. A history request is an isolated dashboard read:
 failure leaves device control and server availability unchanged, and selecting
-a new range cancels the older request.
+a new range cancels the older request. Every accepted visible-device poll refreshes
+history in the background; an in-flight refresh is allowed to finish, while an
+explicit range/device change cancels its predecessor. Per-request sequence guards
+prevent stale responses from replacing the selected range. The response includes
+raw-reading temperature/humidity minima and maxima before bucket averaging,
+alongside the exact requested window; null readings do not contribute to extrema.
+
+## Grow journal and operational activity
+
+Migration 007 introduces named grows (one active grow per device), dated journal
+membership, persisted schedule follow-ups, optional network state, and operational
+events. Legacy journal content remains intact and unassigned; operational legacy
+rows are copied once and excluded from manual journal views. Users explicitly
+assign unassigned manual entries to same-device grows whose dates include them.
+
+Phase segments follow all phase entries ordered by actual timestamp and stable
+entry ID, independently of list filters or chart windows. Revisited phases remain
+separate segments. End grow records an explicit boundary and sends no MQTT command;
+Harvest remains an ordinary phase. Corrections within the grow's dates recalculate
+segments without reopening an ended grow. Duration units and per-device collapsed
+sections are browser preferences, not stored timestamps.
+
+A confirmed first/different template load creates an optional follow-up in the same
+transaction as action completion. Template identity controls eligibility; same
+identity revisions/reloads do not prompt. Late confirmations use the same path.
+The action ID is unique, and journal save plus prompt resolution is atomic, so
+repeated saves or page reloads cannot duplicate a phase. Newer confirmed loads
+supersede unresolved earlier prompts. Dismissal leaves the journal unchanged.
+
+Authenticated journal routes (mutations also require CSRF):
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/v1/devices/:deviceId/journal` | Named grows, unassigned manual entries, pending prompts |
+| `POST /api/v1/devices/:deviceId/grows` | Start with name, phase, actual `started_at`, optional `action_id` |
+| `GET /api/v1/grows/:id` | Entire dated timeline and entries |
+| `POST /api/v1/grows/:id/end` | Record actual `ended_at` |
+| `POST /api/v1/grows/:id/assign` | Assign selected `entry_ids` |
+| `POST /api/v1/events` | Create a manual entry with optional `growId`/`actionId` |
+| `PATCH /api/v1/events/:id` | Correct phase, label, notes, or actual timestamp |
+| `DELETE /api/v1/events/:id` | Delete a manual entry |
+| `POST /api/v1/devices/:deviceId/grow-prompts/:actionId/dismiss` | Resolve a pending follow-up without a journal write |
+
+Presence transitions and observed management-address changes go to operational
+activity rather than the journal. Activity also shows action outcomes and template
+names, using completion time when available.
+
+## Optional device management address
+
+The unreleased additive firmware report `growhub/<MAC>/network/state` contains
+`{"v":1,"ip":"192.0.2.10","http_port":80}` and uses retained QoS 1. It is
+outside the frozen CE 1.1.0C baseline and is not required for discovery/readiness.
+The server validates IPv4 unicast addresses and integer ports, buffers up to 256
+reports that precede authoritative discovery, and persists valid state by MAC.
+Device responses expose `management` (URL, IP, received time) or null. The server
+does not fetch that URL; the browser opens it in a new tab.
+
+A changed known address/port emits one operational event with old/new values;
+initial discovery and identical replay emit none. Retained replay rebuilds the
+link after server restart, while presence remains a separate signal. Firmware
+republishes after reconnecting and when the station address changes.
 
 ## Release Updates
 
 The server polls only the repository's latest stable tagged GitHub Release and
-persists the cached release, per-tag dismissal, and automatic-update preference
+persists the cached release, per-tag dismissal, 24-hour deferral, and opt-in check preference
 in SQLite. It cannot run Docker or arbitrary host commands. On Linux, a
 one-time-installed systemd path service watches a narrow bind-mounted request
 directory, validates the exact release again, and runs the existing backup-first
 Compose updater from the host checkout. This keeps Docker authority outside the
-web application while allowing routine Pi updates from the UI.
+web application while allowing routine Pi updates from the UI. Every request
+requires explicit user confirmation; checks cannot initiate installation.
+Migration 008 clears legacy unattended preferences. Firmware update state is
+optional and controller-owned; device-card actions use authenticated, CSRF-checked
+routes and non-retained MQTT commands. Journal data is separate from this mirror.
 
 ## Security Boundary
 

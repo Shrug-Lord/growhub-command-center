@@ -70,6 +70,43 @@ status, schedules, and controls remain usable. Changing ranges cancels the
 previous history request. Background device and activity polling pauses while
 the page is hidden and refreshes when it becomes visible again.
 
+## Dashboard and grow journal
+
+The selected sensor-history range refreshes with visible-device polling. The
+Temperature and Humidity range cards show actual low/high readings and their span,
+not the low/high of averaged chart points. Temperature follows the selected C/F
+unit. A failed refresh leaves the prior chart visible with a retry option.
+
+Use **Open device management** to open the controller's local page in a new tab.
+Firmware with the optional network-state extension reports its current address
+automatically over MQTT. Older firmware remains usable and shows an explanatory
+unavailable state. For an offline device, the link is labeled as its last reported
+address; reachability is not assumed.
+
+The lower dashboard reads Sensor history → Grow journal → Recent activity →
+History samples. Section headings toggle their contents and remember the choice
+per device in this browser. History samples starts collapsed; other sections start
+expanded. Device control always stays expanded.
+
+Choose **Start grow** to record a name, initial phase, and actual start time. Each
+device has one active grow; ended grows remain selectable. Phase changes can skip
+or revisit phases and can use custom names. Days/Weeks changes only the duration
+display (for example, 17 days becomes 2 weeks 3 days); dates remain visible.
+**End grow** explicitly freezes the grow and final phase at its end time without
+changing device control. Logging Harvest does not end the grow.
+
+Use the quick-add buttons for notes, nutrients, pH adjustments, or training.
+Filtering entries leaves timeline totals unchanged. Entries can be corrected in
+active and ended grows. Existing entries are available under **Unassigned entries**;
+select them and assign them to a same-device grow whose dates cover them.
+
+After a confirmed first/different schedule load, an optional follow-up offers
+**Log phase change / Keep current phase**, or **Start grow / Not now** when no grow
+is active. The follow-up also appears when loading from the Schedules page and
+survives page reloads. Reloading/revising the same template does not prompt. All
+load attempts show their actual outcome in Recent activity, along with device
+presence and address changes. Operational activity does not clutter the journal.
+
 ## Ports and Hostname
 
 The defaults are host port 80 for the UI/API and host port 1883 for CE firmware
@@ -90,15 +127,24 @@ internet router.
 
 ## Update
 
-Command Center checks the repository's latest stable tagged GitHub Release at
-startup and every six hours. When a newer release exists, the UI prompts once
-for that tag. **Ignore this release** suppresses only that release; a later tag
-can prompt again. Settings always shows the installed version, latest check,
-manual **Check now**, and the automatic-update option.
+Command Center 0.2.0 defaults periodic release checking to off. Enable **Check
+for updates every six hours** to check after startup and every six hours with up
+to one minute of randomized delay. **Check now** works even when that setting is
+off. Only newer published stable releases are offered.
+
+Prompts offer **Update**, **Later** (24 hours), and **Skip this version**. Skipping
+hides the prompt for that tag but keeps the release available in Settings. Update
+requires a final confirmation of the exact version and restart impact. The old
+unattended-install option is removed; migration disables it for existing installs.
+
+Device cards expose firmware updates through the controller's own check state
+and settings. The same controls remain available in the device management page.
+Firmware updates briefly interrupt outlet control; a Command Center self-update
+interrupts the dashboard/logging while controllers continue operating.
 
 ### One-time Linux or Raspberry Pi setup
 
-Automatic installation deliberately runs outside the web container so the
+User-confirmed installation runs outside the web container so the
 application never receives the Docker socket or arbitrary host-command access.
 From the Command Center checkout, install its narrow systemd host service once:
 
@@ -109,9 +155,9 @@ sudo "$(command -v node)" scripts/install-update-agent.js
 The service watches only `deploy/update/request.json`, independently verifies
 that its exact `vX.Y.Z` tag is a published stable release, and invokes the
 backup-first updater as the account that owns the checkout. After this setup,
-use **Update now** in the prompt or enable **Install verified tagged releases
-automatically** in Settings. Routine releases then require no SSH or terminal
-work. The server may be unavailable for several minutes while a small Pi builds
+use **Update** in the prompt or install from Settings, then confirm the restart.
+Routine releases then require no SSH or terminal work. Windows/macOS use the
+command-line fallback below; the host service requires Linux/systemd. The server may be unavailable for several minutes while a small Pi builds
 and restarts the release.
 
 Inspect host-agent activity when troubleshooting:
@@ -120,6 +166,13 @@ Inspect host-agent activity when troubleshooting:
 systemctl status growhub-command-center-updater.path
 journalctl -u growhub-command-center-updater.service -n 100 --no-pager
 ```
+
+Failed installations stop without automatic retries. The host script preserves
+its pre-update backup, reports the failure, and requires an operator to inspect
+logs before retrying or explicitly restoring a backup. It does not automatically
+restore older journal data. A request is claimed once before validation and is
+not replayed after a failed/interrupted run. Success requires service readiness
+and a matching running server version.
 
 ### Command-line fallback
 
@@ -143,7 +196,7 @@ npm run compose:update -- --release v0.2.0 --skip-backup
 
 Running `npm run compose:update` without `--release` remains the explicit
 source-checkout/development path that fast-forwards the current branch. It is
-not used by the UI or automatic updater.
+not used by the UI updater.
 
 ## Backup
 

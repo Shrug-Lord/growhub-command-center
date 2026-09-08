@@ -1,3 +1,4 @@
+import CollapsibleSection from './CollapsibleSection.jsx'
 import React, { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Tag } from 'lucide-react'
 import { createDeviceAction, updateDeviceOutlets } from '../../api/piClient.js'
@@ -56,12 +57,9 @@ export default function ScheduleDeploymentStatus({
   }
 
   return (
-    <section className="border-y border-gray-800 py-5" aria-labelledby="deployment-title">
+    <CollapsibleSection title="Active schedule expectation" storageKey={mac + ':deployment'}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="deployment-title" className="text-sm font-semibold text-white">
-            Active schedule expectation
-          </h2>
           {expectedSchedule ? (
             <p className="mt-1 text-xs text-gray-500">
               {expectedSchedule.template_name}, revision {expectedSchedule.loaded_revision}, was
@@ -142,6 +140,6 @@ export default function ScheduleDeploymentStatus({
           {error}
         </p>
       )}
-    </section>
+    </CollapsibleSection>
   )
 }

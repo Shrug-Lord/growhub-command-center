@@ -36,6 +36,8 @@ function createMqttService({
   let lastError = null;
   const recoveryByDevice = new Map();
   const observers = new Set();
+  const pendingNetworks = new Map();
+  const pendingUpdates = new Map();
 
   function notifyObservers(method, event) {
     for (const observer of observers) {
@@ -276,7 +278,7 @@ function createMqttService({
       const wasOffline = Boolean(stmts.hasUnreadAlarmOfType.get(deviceId, 'device_offline'));
       stmts.resolveAlarmType.run(deviceId, 'device_offline');
       if (previous === 'offline' || wasOffline) {
-        stmts.insertEvent.run({
+        stmts.recordOperationalEvent({
           device_id: deviceId,
           schedule_id: null,
           type: 'device_online',
@@ -299,7 +301,7 @@ function createMqttService({
       });
     }
     if (previous === 'online') {
-      stmts.insertEvent.run({
+      stmts.recordOperationalEvent({
         device_id: deviceId,
         schedule_id: null,
         type: 'device_offline',
@@ -400,6 +402,16 @@ function createMqttService({
       );
     }
 
+    if (pendingUpdates.has(message.mac)) {
+      const p = pendingUpdates.get(message.mac);
+      stmts.recordUpdateState.run(message.mac, JSON.stringify(p.value), p.receivedAt);
+      pendingUpdates.delete(message.mac);
+    }
+    if (pendingNetworks.has(message.mac)) {
+      const pending = pendingNetworks.get(message.mac);
+      stmts.recordNetworkState(message.mac, pending.value, pending.receivedAt);
+      pendingNetworks.delete(message.mac);
+    }
     markStateReceived(message.mac, message.key, receivedAt);
     logger.debug?.('mqtt_state_observed', {
       device_id: message.mac,
@@ -454,6 +466,26 @@ function createMqttService({
     }
     const receivedAt = clock();
     try {
+      if (message.kind === 'update') {
+        if (stmts.getDevice.get(message.mac))
+          stmts.recordUpdateState.run(message.mac, JSON.stringify(message.normalized), receivedAt);
+        else {
+          pendingUpdates.set(message.mac, { value: message.normalized, receivedAt });
+          if (pendingUpdates.size > 256) pendingUpdates.delete(pendingUpdates.keys().next().value);
+        }
+        return true;
+      }
+      if (message.kind === 'network') {
+        if (stmts.getDevice.get(message.mac)) {
+          stmts.recordNetworkState(message.mac, message.normalized, receivedAt);
+        } else {
+          // Retained topics can arrive before the authoritative discovery topic.
+          pendingNetworks.set(message.mac, { value: message.normalized, receivedAt });
+          if (pendingNetworks.size > 256)
+            pendingNetworks.delete(pendingNetworks.keys().next().value);
+        }
+        return true;
+      }
       return message.kind === 'state'
         ? persistState(message, packet, receivedAt)
         : persistError(message, receivedAt);

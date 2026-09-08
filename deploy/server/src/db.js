@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const Database = require('better-sqlite3');
 const { applyMigrations } = require('./migrations');
@@ -234,6 +235,10 @@ function openDatabase(dbPath, { clock, migrationsDir } = {}) {
         SELECT
           CAST((observed_at - @from_ms) / @bucket_ms AS INTEGER) AS bucket_index,
           CAST(AVG(observed_at) AS INTEGER) AS taken_at,
+          MIN(temperature_c) AS temp_min,
+          MAX(temperature_c) AS temp_max,
+          MIN(humidity_rh) AS humidity_min,
+          MAX(humidity_rh) AS humidity_max,
           AVG(temperature_c) AS temp,
           AVG(humidity_rh) AS humidity,
           AVG(light_level) AS light,
@@ -498,6 +503,48 @@ function openDatabase(dbPath, { clock, migrationsDir } = {}) {
         ORDER BY occurred_at DESC LIMIT 1
       `),
     };
+
+    const insertOperational = db.prepare(
+      'INSERT INTO operational_events (id, device_id, type, context_json, occurred_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    stmts.recordOperationalEvent = (event) =>
+      insertOperational.run(
+        randomUUID(),
+        event.device_id,
+        event.type,
+        JSON.stringify(event.context ?? { label: event.label }),
+        event.occurred_at,
+        event.created_at,
+      );
+    stmts.getUpdateState = db.prepare('SELECT * FROM device_update_state WHERE device_id = ?');
+    stmts.recordUpdateState = db.prepare(
+      'INSERT INTO device_update_state(device_id,state_json,received_at) VALUES (?,?,?) ON CONFLICT(device_id) DO UPDATE SET state_json=excluded.state_json,received_at=excluded.received_at',
+    );
+    stmts.getNetworkState = db.prepare('SELECT * FROM device_network_state WHERE device_id = ?');
+    const upsertNetwork = db.prepare(
+      'INSERT INTO device_network_state(device_id, ip_address, http_port, received_at) VALUES (?, ?, ?, ?) ON CONFLICT(device_id) DO UPDATE SET ip_address = excluded.ip_address, http_port = excluded.http_port, received_at = excluded.received_at',
+    );
+    stmts.recordNetworkState = db.transaction((deviceId, network, now) => {
+      const previous = stmts.getNetworkState.get(deviceId);
+      upsertNetwork.run(deviceId, network.ip, network.http_port, now);
+      if (
+        previous &&
+        (previous.ip_address !== network.ip || previous.http_port !== network.http_port)
+      ) {
+        stmts.recordOperationalEvent({
+          device_id: deviceId,
+          type: 'management_address_changed',
+          context: {
+            previous_ip: previous.ip_address,
+            ip: network.ip,
+            previous_port: previous.http_port,
+            http_port: network.http_port,
+          },
+          occurred_at: now,
+          created_at: now,
+        });
+      }
+    });
 
     function close() {
       if (!db.open) return;

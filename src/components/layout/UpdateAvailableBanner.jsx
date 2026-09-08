@@ -20,20 +20,24 @@ export default function UpdateAvailableBanner({ onOpenSettings }) {
 
   useEffect(() => {
     void refresh()
+    const timer = setInterval(refresh, 5000)
     function updateStatus(event) {
       setUpdates(event.detail)
     }
     window.addEventListener('command-center-update-status', updateStatus)
-    return () => window.removeEventListener('command-center-update-status', updateStatus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('command-center-update-status', updateStatus)
+    }
   }, [refresh])
 
   if (!updates?.prompt_available || !updates.latest_release) return null
 
-  async function ignore() {
+  async function ignore(mode = 'skip') {
     setBusy('ignore')
     setError(null)
     try {
-      setUpdates(await dismissUpdate({ tag: updates.latest_release.tag }))
+      setUpdates(await dismissUpdate({ tag: updates.latest_release.tag, mode }))
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -46,10 +50,16 @@ export default function UpdateAvailableBanner({ onOpenSettings }) {
       onOpenSettings()
       return
     }
+    if (
+      !window.confirm(
+        `Install Command Center ${updates.latest_release.tag}? A backup will be created. The dashboard and logging will pause during restart; controllers keep operating.`,
+      )
+    )
+      return
     setBusy('install')
     setError(null)
     try {
-      setUpdates(await installUpdate({ tag: updates.latest_release.tag }))
+      setUpdates(await installUpdate({ tag: updates.latest_release.tag, confirmed: true }))
     } catch (requestError) {
       setError(requestError.message)
       setBusy(null)
@@ -99,11 +109,19 @@ export default function UpdateAvailableBanner({ onOpenSettings }) {
           </button>
           <button
             type="button"
+            disabled={busy !== null}
+            onClick={() => void ignore('later')}
+            className="h-8 px-2 text-xs"
+          >
+            Later
+          </button>
+          <button
+            type="button"
             onClick={() => void ignore()}
             disabled={busy !== null}
             className="inline-flex h-8 items-center gap-1 rounded px-2 text-xs text-emerald-100 hover:bg-emerald-900 disabled:opacity-60"
           >
-            <X className="h-3.5 w-3.5" /> Ignore this release
+            <X className="h-3.5 w-3.5" /> Skip this version
           </button>
         </div>
       </div>

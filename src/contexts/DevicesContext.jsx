@@ -74,11 +74,13 @@ export function DevicesProvider({ children }) {
   const { auth } = useAuth()
   const [deviceMap, setDeviceMap] = useState({})
   const [deviceList, setDeviceList] = useState([])
+  const [pollRevision, setPollRevision] = useState(0)
   const [serverHealth, setServerHealth] = useState(UNKNOWN_SERVER_HEALTH)
 
   const acceptDevices = useCallback((devices) => {
     const visible = devices.filter((device) => !device.hidden)
     setDeviceList(visible)
+    setPollRevision((revision) => revision + 1)
     setDeviceMap((previous) => {
       const next = { ...previous }
       for (const device of visible) {
@@ -155,6 +157,7 @@ export function DevicesProvider({ children }) {
     <DevicesContext.Provider
       value={{
         deviceList,
+        pollRevision,
         deviceMap,
         serverHealth,
         appendHistory,

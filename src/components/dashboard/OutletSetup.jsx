@@ -1,3 +1,4 @@
+import CollapsibleSection from './CollapsibleSection.jsx'
 import React, { useMemo, useState } from 'react'
 import { AlertTriangle, Check, Loader2, RotateCcw, Save, Wand2 } from 'lucide-react'
 import { createDeviceAction, updateDeviceOutlets } from '../../api/piClient.js'
@@ -132,12 +133,9 @@ export default function OutletSetup({
   }
 
   return (
-    <section className="border-y border-gray-800 py-5" aria-labelledby="outlet-setup-title">
+    <CollapsibleSection title="Device setup" storageKey={mac + ':setup'}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="outlet-setup-title" className="text-sm font-semibold text-white">
-            Device setup
-          </h2>
           <p className="mt-1 text-xs text-gray-500">
             Firmware owns these physical assignments and labels. Applying replaces all four outlets.
           </p>
@@ -262,6 +260,6 @@ export default function OutletSetup({
           </span>
         )}
       </div>
-    </section>
+    </CollapsibleSection>
   )
 }

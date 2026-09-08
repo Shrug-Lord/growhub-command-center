@@ -60,3 +60,14 @@ test('evidence fields reject empty values as well as pending markers', () => {
     ['Commit is missing from hardware evidence.', 'Device is missing from hardware evidence.'],
   )
 })
+
+test('missing evidence fields cannot be satisfied by an older generic passed record', () => {
+  assert.deepEqual(
+    validateEvidence({
+      label: 'current release',
+      content: 'Status: passed\n- Tested by: Operator\n',
+      requiredFields: ['Candidate commit', 'Tested by'],
+    }),
+    ['Candidate commit is missing from current release.'],
+  )
+})

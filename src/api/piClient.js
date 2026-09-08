@@ -17,6 +17,10 @@ function toDevice(device) {
     displayName: device.display_name,
     reportedName: device.reported_name,
     firmwareVersion: device.firmware_version,
+    management: device.management ?? null,
+    firmwareUpdate: device.firmware_update ?? null,
+    growPrompts: device.grow_prompts ?? [],
+    activeGrow: device.active_grow ?? null,
     hidden: device.hidden,
     presence: device.presence,
     mirror: device.mirror,
@@ -63,6 +67,7 @@ function toEvent(event) {
     _id: event.id,
     deviceId: event.device_id,
     scheduleId: event.schedule_id,
+    growId: event.grow_id,
     type: event.type,
     phase: event.phase,
     label: event.label,
@@ -229,26 +234,26 @@ export async function getUpdateStatus({ check = false } = {}) {
   return announceUpdateStatus(body.updates)
 }
 
-export async function dismissUpdate({ tag } = {}) {
+export async function dismissUpdate({ tag, mode = 'skip' } = {}) {
   const body = await requestJson('/api/v1/updates/dismiss', {
     method: 'POST',
-    body: JSON.stringify({ tag }),
+    body: JSON.stringify({ tag, mode }),
   })
   return announceUpdateStatus(body.updates)
 }
 
-export async function setAutomaticUpdates({ enabled } = {}) {
+export async function setUpdateChecks({ enabled } = {}) {
   const body = await requestJson('/api/v1/updates/settings', {
     method: 'PUT',
-    body: JSON.stringify({ auto_install: enabled }),
+    body: JSON.stringify({ checks_enabled: enabled }),
   })
   return announceUpdateStatus(body.updates)
 }
 
-export async function installUpdate({ tag } = {}) {
+export async function installUpdate({ tag, confirmed = false } = {}) {
   const body = await requestJson('/api/v1/updates/install', {
     method: 'POST',
-    body: JSON.stringify({ tag }),
+    body: JSON.stringify({ tag, confirmed }),
   })
   return announceUpdateStatus(body.updates)
 }
@@ -403,4 +408,53 @@ export async function getCurrentPhase({ deviceId } = {}) {
     {},
   )
   return { phase: body.current_phase.phase }
+}
+
+export async function getJournal({ deviceId, signal }) {
+  const body = await requestJson('/api/v1/devices/' + deviceId + '/journal', { signal })
+  return body.journal
+}
+export async function getGrow({ id, signal }) {
+  return (await requestJson('/api/v1/grows/' + id, { signal })).grow
+}
+export async function startGrow({ deviceId, grow }) {
+  return (
+    await requestJson('/api/v1/devices/' + deviceId + '/grows', {
+      method: 'POST',
+      body: JSON.stringify(grow),
+    })
+  ).grow
+}
+export async function endGrow({ id, endedAt }) {
+  return (
+    await requestJson('/api/v1/grows/' + id + '/end', {
+      method: 'POST',
+      body: JSON.stringify({ ended_at: endedAt }),
+    })
+  ).grow
+}
+export async function assignGrowEntries({ id, entryIds }) {
+  return (
+    await requestJson('/api/v1/grows/' + id + '/assign', {
+      method: 'POST',
+      body: JSON.stringify({ entry_ids: entryIds }),
+    })
+  ).grow
+}
+export async function editEvent({ id, event }) {
+  return (
+    await requestJson('/api/v1/events/' + id, { method: 'PATCH', body: JSON.stringify(event) })
+  ).event
+}
+export async function dismissGrowPrompt({ deviceId, actionId }) {
+  return requestJson('/api/v1/devices/' + deviceId + '/grow-prompts/' + actionId + '/dismiss', {
+    method: 'POST',
+  })
+}
+
+export async function sendFirmwareUpdateAction(deviceId, action) {
+  return requestJson(`/api/v1/devices/${deviceId}/firmware-update`, {
+    method: 'POST',
+    body: JSON.stringify(action),
+  })
 }

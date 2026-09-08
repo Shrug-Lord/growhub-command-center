@@ -40,14 +40,16 @@ export function useDeviceData(mac) {
   )
 
   const fetchHistory = useCallback(
-    async (hours = 24) => {
-      if (!mac) return
+    async (hours = 24, { background = false } = {}) => {
+      if (!mac || (background && historyRequestRef.current)) return
       historyRequestRef.current?.abort()
       const controller = new AbortController()
       historyRequestRef.current = controller
       const sequence = ++historySequenceRef.current
-      setHistoryLoading(true)
-      setHistoryError(null)
+      if (!background) {
+        setHistoryLoading(true)
+        setHistoryError(null)
+      }
       try {
         const toDate = new Date()
         const fromDate = new Date(toDate.getTime() - hours * 60 * 60 * 1000)
@@ -58,6 +60,7 @@ export function useDeviceData(mac) {
           signal: controller.signal,
         })
         const normalized = tryIngestLogsFromApi(result.series)
+        if (sequence === historySequenceRef.current) setHistoryError(null)
         if (normalized && normalized.parsedData) {
           if (sequence === historySequenceRef.current) {
             appendHistory(mac, normalized.parsedData, result.meta)

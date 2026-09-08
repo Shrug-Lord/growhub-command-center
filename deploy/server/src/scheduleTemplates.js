@@ -525,27 +525,34 @@ function createScheduleTemplateService({
     `),
     listActivityFirst: db.prepare(`
       SELECT kind, occurred_at, sort_id, payload_id FROM (
-        SELECT 'action' AS kind, created_at AS occurred_at,
+        SELECT 'action' AS kind, COALESCE(completed_at, created_at) AS occurred_at,
           'a:' || id AS sort_id, id AS payload_id
         FROM device_actions WHERE device_id = @device_id
         UNION ALL
         SELECT 'device_event', occurred_at, 'e:' || id, id
         FROM device_events WHERE device_id = @device_id
+        UNION ALL
+        SELECT 'operational_event', occurred_at, 'o:' || id, id
+        FROM operational_events WHERE device_id = @device_id
       ) ORDER BY occurred_at DESC, sort_id DESC LIMIT @limit
     `),
     listActivityAfter: db.prepare(`
       SELECT kind, occurred_at, sort_id, payload_id FROM (
-        SELECT 'action' AS kind, created_at AS occurred_at,
+        SELECT 'action' AS kind, COALESCE(completed_at, created_at) AS occurred_at,
           'a:' || id AS sort_id, id AS payload_id
         FROM device_actions WHERE device_id = @device_id
         UNION ALL
         SELECT 'device_event', occurred_at, 'e:' || id, id
         FROM device_events WHERE device_id = @device_id
+        UNION ALL
+        SELECT 'operational_event', occurred_at, 'o:' || id, id
+        FROM operational_events WHERE device_id = @device_id
       ) WHERE occurred_at < @occurred_at
         OR (occurred_at = @occurred_at AND sort_id < @sort_id)
       ORDER BY occurred_at DESC, sort_id DESC LIMIT @limit
     `),
     getActionById: db.prepare(`SELECT * FROM device_actions WHERE id = ?`),
+    getOperationalEventById: db.prepare('SELECT * FROM operational_events WHERE id = ?'),
     getEventById: db.prepare(`SELECT * FROM device_events WHERE id = ?`),
     deleteOldDeviceEvents: db.prepare(`
       DELETE FROM device_events
@@ -1003,6 +1010,7 @@ function createScheduleTemplateService({
     const revision = sql.getCurrentRevision.get(result.template.id);
     return {
       context: {
+        previous_template_id: sql.getExpected.get(deviceId)?.template_id ?? null,
         template_id: result.template.id,
         template_name: result.template.name,
         template_revision: result.template.revision,
@@ -1159,6 +1167,18 @@ function createScheduleTemplateService({
     const now = row.completed_at;
     const context = parseJson(row.context_json, {});
     if (row.type === 'load_schedule' || row.type === 'reload_expected_schedule') {
+      db.prepare(
+        "UPDATE grow_prompts SET status = 'dismissed' WHERE device_id = ? AND status = 'pending' AND action_id != ?",
+      ).run(row.device_id, row.id);
+      if (
+        row.type === 'load_schedule' &&
+        Object.hasOwn(context, 'previous_template_id') &&
+        context.previous_template_id !== context.template_id
+      ) {
+        db.prepare(
+          'INSERT OR IGNORE INTO grow_prompts(action_id, device_id, template_name, confirmed_at) VALUES (?, ?, ?, ?)',
+        ).run(row.id, row.device_id, context.template_name, now);
+      }
       establishExpectation({ deviceId: row.device_id, context, actionId: row.id, now });
       reconcileDrift(row.device_id, 'loaded_expected_schedule', row.id, now);
     }
@@ -1768,7 +1788,10 @@ function createScheduleTemplateService({
             action: actionEngine.formatAction(sql.getActionById.get(row.payload_id)),
           };
         }
-        const event = sql.getEventById.get(row.payload_id);
+        const event =
+          row.kind === 'operational_event'
+            ? sql.getOperationalEventById.get(row.payload_id)
+            : sql.getEventById.get(row.payload_id);
         return {
           kind: 'device_event',
           occurred_at: asIso(row.occurred_at),

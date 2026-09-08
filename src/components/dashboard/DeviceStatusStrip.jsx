@@ -1,5 +1,5 @@
 import React from 'react'
-import { AlertTriangle, CheckCircle2, CloudOff, Loader2, Radio } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CloudOff, ExternalLink, Loader2, Radio } from 'lucide-react'
 
 const STATE_LABELS = {
   presence_state: 'presence',
@@ -24,11 +24,17 @@ function Signal({ icon: Icon, label, tone, spin = false }) {
   )
 }
 
-export default function DeviceStatusStrip({ presence, mirror, compatibility, firmwareVersion }) {
+export default function DeviceStatusStrip({
+  presence,
+  mirror,
+  compatibility,
+  firmwareVersion,
+  management,
+}) {
   const missing = mirror?.missing_states ?? []
   return (
     <div className="flex flex-col gap-3 border-y border-gray-800 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {presence?.status === 'online' && <Signal icon={Radio} label="Online" tone="green" />}
         {presence?.status === 'offline' && <Signal icon={CloudOff} label="Offline" tone="gray" />}
         {presence?.status === 'unknown' && (
@@ -52,8 +58,30 @@ export default function DeviceStatusStrip({ presence, mirror, compatibility, fir
         {mirror?.status === 'incompatible' && (
           <Signal icon={AlertTriangle} label="Firmware contract needs attention" tone="red" />
         )}
+        {management ? (
+          <>
+            <a
+              href={management.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 border border-gray-700 bg-gray-900 px-2.5 text-xs font-medium text-green-300 hover:border-green-500"
+            >
+              Open device management <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+            <span className="text-xs text-gray-400">
+              {presence?.status !== 'online' ? 'Last reported address: ' : ''}
+              {management.ip}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs text-gray-400">
+            Device management address not reported. Address reporting requires updated CE firmware.
+          </span>
+        )}
       </div>
-      <span className="text-xs text-gray-500">Firmware {firmwareVersion || 'not reported'}</span>
+      <span className="shrink-0 text-xs text-gray-500">
+        Firmware {firmwareVersion || 'not reported'}
+      </span>
       {compatibility?.blockers?.length > 0 && (
         <span className="sr-only">
           {compatibility.blockers.map((blocker) => blocker.code).join(', ')}

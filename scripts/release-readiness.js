@@ -17,8 +17,9 @@ export function validateEvidence({ label, content, requiredFields }) {
     failures.push(label + ' still has unchecked items.')
   }
   for (const field of requiredFields) {
-    const fieldPattern = new RegExp('^- ' + escapeRegExp(field) + ': (?:pending|\\s*)$', 'm')
-    if (fieldPattern.test(content)) {
+    const fieldPattern = new RegExp('^- ' + escapeRegExp(field) + ':([^\\r\\n]*)$', 'm')
+    const value = fieldPattern.exec(content)?.[1]?.trim()
+    if (!value || value === 'pending') {
       failures.push(field + ' is missing from ' + label + '.')
     }
   }
@@ -86,6 +87,26 @@ function main() {
       requiredFields: ['Command Center commit', 'Release host', 'Tested by', 'Tested at'],
     },
   ]
+  const currentEvidencePath = path.join(
+    root,
+    'docs',
+    'release-evidence',
+    `RELEASE-v${packageJson.version}.md`,
+  )
+  evidenceDocuments.push({
+    label: `v${packageJson.version} release evidence`,
+    content: fs.existsSync(currentEvidencePath)
+      ? fs.readFileSync(currentEvidencePath, 'utf8')
+      : 'Status: pending\n',
+    requiredFields: [
+      'Command Center candidate commit',
+      'CE firmware candidate commit',
+      'Linux/Pi update rehearsal',
+      'Current CI runs',
+      'Tested by',
+      'Tested at',
+    ],
+  })
   const tag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME
   const failures = validateReleaseReadiness({
     tag,

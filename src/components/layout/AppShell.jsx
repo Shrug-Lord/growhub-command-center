@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useDevices } from '../../contexts/DevicesContext.jsx'
 import { useServerAvailability } from '../../contexts/ServerAvailabilityContext.jsx'
 import Sidebar from './Sidebar.jsx'
+import ScheduleGrowPrompt from '../events/ScheduleGrowPrompt.jsx'
 import BrokerUnavailableBanner from './BrokerUnavailableBanner.jsx'
 import ConnectionBadge from './ConnectionBadge.jsx'
 import ServerAvailabilityBanner from './ServerAvailabilityBanner.jsx'
@@ -51,6 +52,7 @@ export default function AppShell({ activePage, onNavigate, children }) {
           aria-disabled={isReadOnly}
           {...(isReadOnly ? { inert: '' } : {})}
         >
+          <ScheduleGrowPrompt />
           {children}
         </main>
       </div>

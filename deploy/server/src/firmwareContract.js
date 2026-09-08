@@ -1,8 +1,10 @@
 'use strict';
 
+const { isIP } = require('node:net');
+
 const MAC_PATTERN = '[0-9A-F]{12}';
 const TOPIC_PATTERN = new RegExp(
-  `^growhub/(${MAC_PATTERN})/(status|sensor/live|outlets/state|schedule/state|schedule/error|outlets/error|time/error|control/error)$`,
+  `^growhub/(${MAC_PATTERN})/(status|update/state|network/state|sensor/live|outlets/state|schedule/state|schedule/error|outlets/error|time/error|control/error)$`,
 );
 
 const ASSIGNMENTS = new Set([
@@ -30,11 +32,18 @@ const WARNING_SEVERITIES = new Set(['blocking', 'warning', 'info']);
 const REQUIRED_STATE_KEYS = Object.freeze(['presence_state', 'outlet_state', 'schedule_state']);
 
 const TOPICS = Object.freeze({
+  'update/state': { kind: 'update', key: 'update_state', discoveryCapable: false, maxBytes: 4096 },
   status: {
     kind: 'state',
     key: 'presence_state',
     discoveryCapable: true,
     maxBytes: 16,
+  },
+  'network/state': {
+    kind: 'network',
+    key: 'network_state',
+    discoveryCapable: false,
+    maxBytes: 1024,
   },
   'sensor/live': {
     kind: 'state',
@@ -183,6 +192,28 @@ function parsePresence(raw) {
     ok: true,
     normalized: { status: raw },
     schemaVersion: null,
+    compatible: true,
+    compatibilityReason: null,
+  };
+}
+
+function parseNetwork(raw) {
+  const decoded = parseJsonObject(raw);
+  if (!decoded.ok) return decoded;
+  const payload = decoded.value;
+  if (
+    payload.v !== 1 ||
+    typeof payload.ip !== 'string' ||
+    isIP(payload.ip) !== 4 ||
+    !isInteger(payload.http_port, 1, 65535)
+  )
+    return invalid('invalid_network_state');
+  const first = Number(payload.ip.split('.')[0]);
+  if (first === 0 || first === 127 || first >= 224) return invalid('invalid_network_address');
+  return {
+    ok: true,
+    normalized: { v: 1, ip: payload.ip, http_port: payload.http_port },
+    schemaVersion: 1,
     compatible: true,
     compatibilityReason: null,
   };
@@ -544,6 +575,19 @@ function parseFirmwareMessage(topic, payload) {
 
   let result;
   if (path === 'status') result = parsePresence(decoded.raw);
+  else if (path === 'update/state') {
+    try {
+      result = {
+        ok: true,
+        normalized: require('./firmwareUpdates').normalizeUpdate(JSON.parse(decoded.raw)),
+        schemaVersion: 1,
+        compatible: true,
+        compatibilityReason: null,
+      };
+    } catch (_) {
+      result = invalid('invalid_update_state');
+    }
+  } else if (path === 'network/state') result = parseNetwork(decoded.raw);
   else if (path === 'sensor/live') result = parseSensor(decoded.raw, mac);
   else if (path === 'outlets/state') result = parseOutlets(decoded.raw);
   else if (path === 'schedule/state') result = parseScheduleState(decoded.raw);

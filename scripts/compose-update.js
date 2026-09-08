@@ -47,6 +47,15 @@ function update() {
     compose(['build', '--pull', 'server'])
     compose(['up', '-d', '--remove-orphans', 'mosquitto', 'server'])
     waitForReady()
+    const expected = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'deploy/server/package.json'), 'utf8'),
+    ).version
+    const installed = compose(
+      ['exec', '-T', 'server', 'node', '-p', "require('./package.json').version"],
+      { capture: true },
+    ).trim()
+    if (installed !== expected)
+      throw new Error(`Running server version ${installed} does not match ${expected}.`)
   } catch (error) {
     if (backup) process.stderr.write(`Pre-update backup: ${backup}\n`)
     throw error

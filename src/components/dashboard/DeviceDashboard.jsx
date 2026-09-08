@@ -1,3 +1,4 @@
+import FirmwareUpdates from './FirmwareUpdates.jsx'
 import React, { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { useDevices } from '../../contexts/DevicesContext.jsx'
@@ -42,7 +43,7 @@ export default function DeviceDashboard({ mac }) {
     sendRelayToggle,
     sendAction,
   } = useDeviceData(mac)
-  const { deviceList, refreshDevices } = useDevices()
+  const { deviceList, refreshDevices, pollRevision } = useDevices()
   const [selectedSensors, setSelectedSensors] = useState({
     TEMP: true,
     HUMIDITY: true,
@@ -59,6 +60,10 @@ export default function DeviceDashboard({ mac }) {
     void fetchHistory(HISTORY_HOURS[timeRange])
   }, [fetchHistory, timeRange])
 
+  useEffect(() => {
+    void fetchHistory(HISTORY_HOURS[timeRange], { background: true })
+  }, [fetchHistory, timeRange, pollRevision])
+
   return (
     <div className="space-y-5">
       <DeviceStatusStrip
@@ -66,6 +71,15 @@ export default function DeviceDashboard({ mac }) {
         mirror={mirror}
         compatibility={compatibility}
         firmwareVersion={device?.firmwareVersion}
+        management={device?.management}
+      />
+
+      <FirmwareUpdates
+        deviceId={mac}
+        state={device?.firmwareUpdate}
+        firmwareVersion={device?.firmwareVersion}
+        online={presence?.status === 'online' && mirror?.status === 'ready'}
+        onChanged={refreshDevices}
       />
 
       {warnings.length > 0 && (
@@ -124,9 +138,8 @@ export default function DeviceDashboard({ mac }) {
         onChanged={refreshDevices}
       />
 
-      <RecentActivity deviceId={mac} />
-
       <HistoryChart
+        collapseKey={mac + ':history'}
         data={history}
         meta={historyMeta}
         loading={historyLoading}
@@ -142,15 +155,17 @@ export default function DeviceDashboard({ mac }) {
           }))
         }
       />
+      <EventLog deviceId={mac} />
+      <RecentActivity deviceId={mac} />
       {history.length > 0 && (
         <DataTable
+          collapseKey={mac + ':samples'}
           data={history}
           meta={historyMeta}
           selectedSensors={selectedSensors}
           timeRange={timeRange}
         />
       )}
-      <EventLog deviceId={mac} />
     </div>
   )
 }

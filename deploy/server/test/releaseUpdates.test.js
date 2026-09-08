@@ -81,7 +81,7 @@ test('release prompts are dismissed per tag and return for a newer release', asy
   assert.equal(status.prompt_available, true);
 });
 
-test('automatic updates write one validated host-agent request', async (t) => {
+test('enabled checks never install; an explicit confirmation writes one request', async (t) => {
   const { directory, service } = createHarness(t, [release('v0.2.0')]);
   fs.writeFileSync(
     path.join(directory, 'agent.json'),
@@ -89,13 +89,17 @@ test('automatic updates write one validated host-agent request', async (t) => {
   );
   await service.check({ force: true });
 
-  const status = await service.setAutoInstall(true);
+  const status = await service.setChecksEnabled(true);
+  assert.equal(fs.existsSync(path.join(directory, 'request.json')), false);
+  assert.throws(() => service.requestInstall('v0.2.0'), /Confirm/);
+  service.requestInstall('v0.2.0', true);
+  assert.throws(() => service.requestInstall('v0.2.0', true), /already in progress/);
   const request = JSON.parse(fs.readFileSync(path.join(directory, 'request.json'), 'utf8'));
-  assert.equal(status.auto_install, true);
-  assert.equal(status.prompt_available, false);
+  assert.equal(status.checks_enabled, true);
+  assert.equal(status.prompt_available, true);
   assert.equal(request.v, 1);
   assert.equal(request.tag, 'v0.2.0');
-  assert.equal(request.requested_by, 'automatic');
+  assert.equal(request.requested_by, 'user');
 });
 
 test('install requests fail closed until the host update service is installed', async (t) => {
@@ -106,4 +110,74 @@ test('install requests fail closed until the host update service is installed', 
     () => service.requestInstall('v0.2.0'),
     (error) => error instanceof ReleaseUpdateError && error.code === 'update_agent_unavailable',
   );
+});
+
+test('disabled background checks do not contact GitHub; manual checks work', async (t) => {
+  const { service } = createHarness(t, [release('v0.2.0')]);
+  assert.equal((await service.check()).latest_release, null);
+  assert.equal((await service.check({ force: true })).latest_release.tag, 'v0.2.0');
+});
+test('Later defers the same release for 24 hours and Skip remains per-version', async (t) => {
+  const { service, advance } = createHarness(t, [release('v0.2.0')]);
+  await service.check({ force: true });
+  assert.equal(service.dismiss('v0.2.0', 'later').prompt_available, false);
+  advance(86400001);
+  assert.equal(service.status().prompt_available, true);
+  service.dismiss('v0.2.0');
+  advance(86400001);
+  assert.equal(service.status().prompt_available, false);
+});
+test('prereleases and malformed metadata never become install targets', async (t) => {
+  const { service } = createHarness(t, [{ ...release('v0.3.0'), prerelease: true }]);
+  const status = await service.check({ force: true });
+  assert.equal(status.update_available, false);
+  assert.ok(status.check_error);
+});
+
+test('background timer is opt-in and enabling checks never requests installation', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'growhub-timer-test-'));
+  const database = openDatabase(':memory:');
+  let now = 1,
+    calls = 0,
+    tick;
+  const service = createReleaseUpdateService({
+    database,
+    logger: loggerStub(),
+    updateRequestDir: directory,
+    clock: () => now,
+    currentVersion: '0.2.0',
+    setIntervalFn: (fn) => {
+      tick = fn;
+      return 1;
+    },
+    clearIntervalFn: () => {},
+    fetchFn: async () => {
+      calls++;
+      return new Response(JSON.stringify(release('v0.3.0')));
+    },
+  });
+  t.after(() => {
+    service.close();
+    database.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  service.start();
+  now += 61000;
+  tick();
+  await new Promise(setImmediate);
+  assert.equal(calls, 0);
+  await service.setChecksEnabled(true);
+  now += 61000;
+  tick();
+  await new Promise(setImmediate);
+  assert.equal(calls, 1);
+  assert.equal(fs.existsSync(path.join(directory, 'request.json')), false);
+  tick();
+  await new Promise(setImmediate);
+  assert.equal(calls, 1);
+  await service.setChecksEnabled(false);
+  now += 7 * 3600000;
+  tick();
+  await new Promise(setImmediate);
+  assert.equal(calls, 1);
 });

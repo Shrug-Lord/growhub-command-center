@@ -73,6 +73,7 @@ function formatDevice(device, { stmts, mqttService, actionEngine, scheduleServic
   const mirrorStatus =
     unsupported.length > 0 || incomplete.length > 0 ? 'incompatible' : ready ? 'ready' : 'syncing';
 
+  const network = stmts.getNetworkState?.get(device.id);
   const presenceRow = stateByKey.get('presence_state');
   const outletRow = stateByKey.get('outlet_state');
   const scheduleRow = stateByKey.get('schedule_state');
@@ -108,6 +109,21 @@ function formatDevice(device, { stmts, mqttService, actionEngine, scheduleServic
     reported_name: device.reported_name,
     firmware_version: device.fw,
     hidden: device.hidden === 1,
+    firmware_update: (() => {
+      const row = stmts.getUpdateState?.get(device.id);
+      return row ? { ...JSON.parse(row.state_json), received_at: asIso(row.received_at) } : null;
+    })(),
+    management: network
+      ? {
+          url:
+            'http://' +
+            network.ip_address +
+            (network.http_port === 80 ? '' : ':' + network.http_port) +
+            '/',
+          ip: network.ip_address,
+          received_at: asIso(network.received_at),
+        }
+      : null,
     presence: {
       status: presence?.status ?? 'unknown',
       online: presence?.status === 'online',

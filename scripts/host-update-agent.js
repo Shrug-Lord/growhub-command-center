@@ -31,7 +31,8 @@ function readRequest(file) {
     value?.v !== 1 ||
     !releaseTagPattern.test(value.tag) ||
     value.version !== value.tag.slice(1) ||
-    !['user', 'automatic'].includes(value.requested_by) ||
+    value.requested_by !== 'user' ||
+    value.confirmed !== true ||
     !Number.isFinite(Date.parse(value.requested_at))
   ) {
     throw new Error('The update request is invalid.')
@@ -82,8 +83,14 @@ async function run() {
   const statusFile = path.join(path.dirname(file), 'status.json')
   let request
   try {
-    request = readRequest(file)
-    fs.unlinkSync(file)
+    // Claim once before validation so invalid or interrupted requests cannot loop.
+    const claimed = `${file}.processing`
+    fs.renameSync(file, claimed)
+    try {
+      request = readRequest(claimed)
+    } finally {
+      fs.unlinkSync(claimed)
+    }
     atomicJson(statusFile, {
       v: 1,
       state: 'installing',
@@ -116,7 +123,9 @@ async function run() {
       tag: request?.tag ?? null,
       requested_at: request?.requested_at ?? null,
       completed_at: new Date().toISOString(),
-      message: error instanceof Error ? error.message : 'Update failed.',
+      message:
+        (error instanceof Error ? error.message : 'Update failed.') +
+        ' No automatic retry. Find the pre-update backup under backups/pre-update; inspect service logs before retrying or restoring.',
     })
     throw error
   }

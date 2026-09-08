@@ -5,6 +5,11 @@ documented CE hardware contract have passed.
 
 ## Prepare
 
+Every release requires `docs/release-evidence/RELEASE-v<version>.md` with current
+candidate commits, CI links, host-update evidence, and completed checks. Historical
+baseline evidence below remains useful but cannot substitute for this record.
+For the current candidate use `RELEASE-v0.2.0.md` and `RELEASE_TAG=v0.2.0`.
+
 1. Complete `docs/release-evidence/CE-1.1.0C.md` with observed hardware results,
    a Command Center commit, date, broker version, and `Status: passed`.
 2. Complete `docs/release-evidence/HOST-COMPATIBILITY.md` from a clean checkout,

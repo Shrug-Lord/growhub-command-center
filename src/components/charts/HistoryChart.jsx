@@ -1,3 +1,4 @@
+import CollapsibleSection from '../dashboard/CollapsibleSection.jsx'
 import React, { useMemo } from 'react'
 import {
   LineChart,
@@ -9,6 +10,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
+import HistoryExtrema from './HistoryExtrema.jsx'
 import TimeRangeSelector from './TimeRangeSelector.jsx'
 import { useTempUnit } from '../../contexts/TempUnitContext.jsx'
 import { downsampleTimeSeries } from '../../utils/chartData.js'
@@ -23,6 +25,7 @@ const sensorColors = {
 }
 
 export default function HistoryChart({
+  collapseKey,
   data,
   meta,
   loading,
@@ -37,6 +40,7 @@ export default function HistoryChart({
 
   const filteredData = useMemo(() => {
     if (!data.length) return []
+    if (meta?.from_ms !== undefined) return data
     if (timeRange === 'all') return data
 
     const latestTs = data[data.length - 1]?.timestamp?.getTime()
@@ -49,7 +53,7 @@ export default function HistoryChart({
     const startDate = new Date(latestTs - hours * 60 * 60 * 1000)
     const endDate = new Date(latestTs)
     return data.filter((item) => item.timestamp >= startDate && item.timestamp <= endDate)
-  }, [data, timeRange])
+  }, [data, timeRange, meta?.from_ms])
 
   const sampledData = useMemo(() => downsampleTimeSeries(filteredData), [filteredData])
 
@@ -79,16 +83,16 @@ export default function HistoryChart({
     : `${returnedCount.toLocaleString()} readings`
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-4">
+    <CollapsibleSection title="Sensor history" storageKey={collapseKey}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1">
-          <h2 className="text-white font-medium text-sm mr-2">Sensor History</h2>
           <span className="text-gray-500 text-xs" aria-live="polite">
             {loading ? 'Updating…' : pointSummary}
           </span>
         </div>
         <TimeRangeSelector value={timeRange} onChange={onTimeRangeChange} />
       </div>
+      <HistoryExtrema extrema={meta?.extrema} />
       <div className="flex flex-wrap gap-3">
         {Object.keys(selectedSensors).map((sensor) => (
           <label key={sensor} className="flex items-center gap-1.5 cursor-pointer">
@@ -171,6 +175,6 @@ export default function HistoryChart({
           </ResponsiveContainer>
         )}
       </div>
-    </div>
+    </CollapsibleSection>
   )
 }

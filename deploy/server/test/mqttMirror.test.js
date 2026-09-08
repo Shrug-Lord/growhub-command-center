@@ -113,6 +113,57 @@ function deliverRequiredState(client) {
   client.deliver(`growhub/${MAC}/schedule/state`, JSON.stringify(schedulePayload()), true);
 }
 
+test('optional address reports follow the same device and log only changes', (t) => {
+  const { client, database, advance } = createHarness(t);
+  const network = (ip) =>
+    client.deliver(
+      'growhub/' + MAC + '/network/state',
+      JSON.stringify({ v: 1, ip, http_port: 80 }),
+      true,
+    );
+  network('192.0.2.10');
+  assert.equal(database.stmts.getAllDevices.all().length, 0);
+  deliverRequiredState(client);
+  assert.equal(database.stmts.getNetworkState.get(MAC).ip_address, '192.0.2.10');
+  network('192.0.2.10');
+  assert.equal(
+    database.db.prepare('SELECT COUNT(*) AS count FROM operational_events').get().count,
+    0,
+  );
+  advance(5000);
+  network('192.0.2.11');
+  network('192.0.2.11');
+  const events = database.db.prepare('SELECT * FROM operational_events').all();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, 'management_address_changed');
+  assert.deepEqual(JSON.parse(events[0].context_json), {
+    previous_ip: '192.0.2.10',
+    ip: '192.0.2.11',
+    previous_port: 80,
+    http_port: 80,
+  });
+  network('javascript:alert(1)');
+  network('127.0.0.1');
+  assert.equal(database.stmts.getNetworkState.get(MAC).ip_address, '192.0.2.11');
+  assert.equal(database.stmts.getAllDevices.all().length, 1);
+});
+
+test('presence transitions belong to operational activity, not the grow journal', (t) => {
+  const { client, database } = createHarness(t);
+  deliverRequiredState(client);
+  for (const status of ['offline', 'offline', 'online', 'online']) {
+    client.deliver('growhub/' + MAC + '/status', status, false);
+  }
+  assert.deepEqual(
+    database.db
+      .prepare('SELECT type FROM operational_events ORDER BY rowid')
+      .all()
+      .map((e) => e.type),
+    ['device_offline', 'device_online'],
+  );
+  assert.equal(database.stmts.getEvents.all(MAC).length, 0);
+});
+
 test('server subscribes to every CE state and error topic with documented QoS', (t) => {
   const { client, service } = createHarness(t);
   assert.deepEqual(client.subscriptions, SUBSCRIPTIONS);

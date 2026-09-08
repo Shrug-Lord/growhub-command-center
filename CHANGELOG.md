@@ -2,7 +2,20 @@
 
 All notable changes will be documented here.
 
-## [Unreleased]
+## [0.2.0] - Unreleased
+
+- Refresh sensor history on polling and show selected-period extrema/ranges.
+- Add collapsible sections, expanded grow journaling and phase durations, and
+  separate operational recent activity.
+- Open device management beside the Online/Device state ready indicators.
+- Mirror optional CE 1.2.0C management-address and firmware-update state.
+- Add controller firmware check preferences, prompts, and confirmed updates.
+- Default self-update checks off; replace unattended installation with explicit
+  confirmation, Later (24 hours), and Skip this version.
+- Keep backup-first Linux/Pi host updates, consume requests once, and verify the
+  running version before reporting success. Windows/macOS retain the CLI updater.
+
+## Earlier baseline notes
 
 ### Added
 

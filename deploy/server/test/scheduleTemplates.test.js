@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { openDatabase } = require('../src/db');
+const { createGrowJournal } = require('../src/growJournal');
 const { createDeviceActionEngine, DeviceActionError } = require('../src/deviceActions');
 const {
   createScheduleTemplateService,
@@ -246,6 +247,7 @@ test('preflight requires setup review, infers physical roles, and requires warni
     },
   });
   assert.equal(pending.status, 'pending');
+  assert.equal(database.db.prepare('SELECT COUNT(*) AS count FROM grow_prompts').get().count, 0);
   assert.equal(published.at(-1).topic, `growhub/${MAC}/grow`);
   assert.equal(
     database.db.prepare('SELECT COUNT(*) AS count FROM device_expected_schedules').get().count,
@@ -263,6 +265,11 @@ test('preflight requires setup review, infers physical roles, and requires warni
     .get(MAC);
   assert.equal(actionEngine.get(MAC, pending.id).status, 'completed');
   assert.equal(expected.template_revision, 1);
+  assert.equal(
+    database.db.prepare("SELECT COUNT(*) AS count FROM grow_prompts WHERE status = 'pending'").get()
+      .count,
+    1,
+  );
   assert.equal(expected.expected_fingerprint, scheduleFingerprint(preflight.compiled_schedule));
   assert.equal(
     database.db
@@ -301,6 +308,15 @@ test('an exact float32 schedule state late-confirms a timed-out load without rep
   const completed = actionEngine.get(MAC, pending.id);
   assert.equal(completed.status, 'completed');
   assert.equal(completed.reason_code, 'confirmed_after_timeout');
+  const journal = createGrowJournal({ database });
+  assert.equal(journal.prompts(MAC).length, 1);
+  actionEngine.observeState({
+    deviceId: MAC,
+    stateKey: 'schedule_state',
+    revision: 2,
+    value: schedulePayload({ schedule: firmwareSchedule }),
+  });
+  assert.equal(journal.prompts(MAC).length, 1);
   assert.equal(published.length, publishCount);
   assert.equal(
     database.db.prepare('SELECT COUNT(*) AS count FROM device_expected_schedules').get().count,
@@ -320,6 +336,7 @@ test('late schedule reconciliation stops after its grace or a superseding emerge
     value: schedulePayload({ schedule: firstLoad.preflight.compiled_schedule }),
   });
   assert.equal(first.actionEngine.get(MAC, firstLoad.pending.id).status, 'timed_out');
+  assert.equal(first.database.db.prepare('SELECT count(*) AS n FROM grow_prompts').get().n, 0);
 
   // A separate device-action engine would normally own the second scenario;
   // use a nested test context so its in-memory database and timers are isolated.
@@ -504,4 +521,68 @@ test('Save as new template locks mirror fingerprints and atomically adopts firmw
   assert.equal(service.listTemplates().length, beforeCount + 1);
   assert.equal(service.deviceScheduleState(MAC).drift, null);
   assert.equal(service.deviceScheduleState(MAC).expected_schedule.template_name, 'Firmware Flower');
+});
+
+test('schedule follow-ups resolve once, ignore same-template revisions, and prompt for distinct identities', async (t) => {
+  const harness = createHarness(t);
+  const { service, database, actionEngine, advance } = harness;
+  const journal = createGrowJournal({ database, clock: harness.now });
+  const setup = service.deviceScheduleState(MAC).setup;
+  await actionEngine.submit({
+    deviceId: MAC,
+    type: 'confirm_device_setup',
+    input: { outlet_fingerprint: setup.outlet_fingerprint },
+  });
+  let revision = 1;
+  async function load(template) {
+    advance(1);
+    const preflight = service.preflight(MAC, template.id);
+    const pending = await actionEngine.submit({
+      deviceId: MAC,
+      type: 'load_schedule',
+      input: {
+        template_id: template.id,
+        mappings: preflight.mapping_object,
+        acknowledged_warning_signature: preflight.warning_signature,
+      },
+    });
+    const value = schedulePayload({ schedule: preflight.compiled_schedule });
+    seedState(database, 'schedule_state', value, ++revision);
+    actionEngine.observeState({ deviceId: MAC, stateKey: 'schedule_state', revision, value });
+    assert.equal(actionEngine.get(MAC, pending.id).status, 'completed');
+    actionEngine.observeState({ deviceId: MAC, stateKey: 'schedule_state', revision, value });
+    return pending;
+  }
+  const template = service.createTemplate(flowerInput());
+  const first = await load(template);
+  assert.equal(journal.prompts(MAC).length, 1);
+  const grow = journal.start(MAC, { name: 'Crop', phase: 'Seedling', action_id: first.id });
+  assert.equal(journal.prompts(MAC).length, 0);
+  const phaseInput = {
+    deviceId: MAC,
+    growId: grow.id,
+    type: 'phase_change',
+    phase: 'Flower',
+    label: 'Flower',
+    actionId: first.id,
+  };
+  assert.throws(() => journal.createEntry(phaseInput), { code: 'grow_prompt_resolved' });
+  assert.equal(journal.detail(grow.id).entries.length, 1);
+  await load(template);
+  assert.equal(journal.prompts(MAC).length, 0);
+  service.updateTemplate(template.id, { ...flowerInput(), description: 'A new revision' });
+  await load(template);
+  assert.equal(journal.prompts(MAC).length, 0);
+  const different = service.createTemplate({ ...flowerInput(), name: 'Another template' });
+  const next = await load(different);
+  assert.equal(journal.prompts(MAC).length, 1);
+  journal.createEntry({ ...phaseInput, actionId: next.id });
+  assert.throws(() => journal.createEntry({ ...phaseInput, actionId: next.id }), {
+    code: 'grow_prompt_resolved',
+  });
+  assert.equal(journal.detail(grow.id).entries.length, 2);
+  const last = await load(template);
+  journal.dismiss(MAC, last.id);
+  assert.equal(journal.prompts(MAC).length, 0);
+  assert.equal(journal.detail(grow.id).entries.length, 2);
 });

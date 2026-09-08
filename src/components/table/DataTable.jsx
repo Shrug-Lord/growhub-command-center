@@ -1,9 +1,10 @@
+import CollapsibleSection from '../dashboard/CollapsibleSection.jsx'
 import React, { useState, useMemo } from 'react'
 import { Download } from 'lucide-react'
 import { useTempUnit } from '../../contexts/TempUnitContext.jsx'
 import { toDisplayTemp } from '../../utils/temperature.js'
 
-export default function DataTable({ data, meta, selectedSensors, timeRange }) {
+export default function DataTable({ collapseKey, data, meta, selectedSensors, timeRange }) {
   const { unit } = useTempUnit()
   const [tableSearch, setTableSearch] = useState('')
   const [tableSortColumn, setTableSortColumn] = useState('timestamp')
@@ -12,6 +13,7 @@ export default function DataTable({ data, meta, selectedSensors, timeRange }) {
 
   const filteredData = useMemo(() => {
     if (!data.length) return []
+    if (meta?.from_ms !== undefined) return data
     if (!timeRange || timeRange === 'all') return data
 
     const latestTs = data[data.length - 1]?.timestamp?.getTime()
@@ -24,7 +26,7 @@ export default function DataTable({ data, meta, selectedSensors, timeRange }) {
     const startDate = new Date(latestTs - hours * 60 * 60 * 1000)
     const endDate = new Date(latestTs)
     return data.filter((item) => item.timestamp >= startDate && item.timestamp <= endDate)
-  }, [data, timeRange])
+  }, [data, timeRange, meta?.from_ms])
 
   const displayRows = useMemo(
     () =>
@@ -106,10 +108,13 @@ export default function DataTable({ data, meta, selectedSensors, timeRange }) {
     tablePageSize === -1 ? processedTableData : processedTableData.slice(0, tablePageSize)
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-4">
+    <CollapsibleSection
+      title="History samples"
+      storageKey={collapseKey}
+      defaultCollapsed={Boolean(collapseKey)}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-white font-medium text-sm">History samples</h2>
           {meta?.aggregated && (
             <p className="mt-0.5 text-xs text-gray-500">
               {meta.returned_count.toLocaleString()} time-bucket averages represent{' '}
@@ -117,7 +122,7 @@ export default function DataTable({ data, meta, selectedSensors, timeRange }) {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex max-w-full flex-wrap items-center gap-3">
           <input
             type="text"
             aria-label="Search data"
@@ -202,6 +207,6 @@ export default function DataTable({ data, meta, selectedSensors, timeRange }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </CollapsibleSection>
   )
 }

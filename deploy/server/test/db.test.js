@@ -24,6 +24,8 @@ function copyMigrations(t) {
     '004_device_actions.sql',
     '005_templates_and_drift.sql',
     '006_release_updates.sql',
+    '007_grow_journal_and_network.sql',
+    '008_release_updates.sql',
   ]) {
     const source = path.join(__dirname, `../migrations/${name}`);
     fs.copyFileSync(source, path.join(directory, name));
@@ -31,14 +33,51 @@ function copyMigrations(t) {
   return directory;
 }
 
+test('the journal migration preserves legacy entries and moves operational visibility', (t) => {
+  const { applyMigrations } = require('../src/migrations');
+  const migrationsDir = copyMigrations(t);
+  fs.unlinkSync(path.join(migrationsDir, '007_grow_journal_and_network.sql'));
+  fs.unlinkSync(path.join(migrationsDir, '008_release_updates.sql'));
+  const dbPath = path.join(temporaryDirectory(t), 'growhub.db');
+  const previous = new Database(dbPath);
+  applyMigrations(previous, { migrationsDir, dbPath });
+  previous
+    .prepare('INSERT INTO devices(id, created_at, updated_at) VALUES (?, 0, 0)')
+    .run('AABBCCDDEEFF');
+  const insert = previous.prepare(
+    "INSERT INTO grow_events(device_id, type, phase, label, notes, occurred_at, created_at) VALUES ('AABBCCDDEEFF', ?, ?, ?, ?, ?, ?)",
+  );
+  insert.run('phase_change', 'veg', 'Started veg', 'Keep this note', 1000, 2000);
+  insert.run('device_online', null, 'Came online', null, 3000, 3000);
+  const entries = previous.prepare('SELECT * FROM grow_events ORDER BY id').all();
+  previous.close();
+  const migrated = openDatabase(dbPath);
+  assert.deepEqual(
+    migrated.db.prepare('SELECT * FROM grow_events ORDER BY id').all(),
+    entries.map((entry) => ({ ...entry, grow_id: null })),
+  );
+  assert.equal(migrated.db.prepare('SELECT COUNT(*) AS count FROM grows').get().count, 0);
+  assert.equal(
+    migrated.db.prepare('SELECT type FROM operational_events').get().type,
+    'device_online',
+  );
+  migrated.close();
+  const reopened = openDatabase(dbPath);
+  assert.equal(
+    reopened.db.prepare('SELECT COUNT(*) AS count FROM operational_events').get().count,
+    1,
+  );
+  reopened.close();
+});
+
 test('fresh database applies the CE domain baseline exactly once', (t) => {
   const dbPath = path.join(temporaryDirectory(t), 'growhub.db');
   const database = openDatabase(dbPath, { clock: () => 123_456 });
 
-  assert.deepEqual(database.migrationState, { currentVersion: 6, appliedCount: 6 });
+  assert.deepEqual(database.migrationState, { currentVersion: 8, appliedCount: 8 });
   assert.equal(database.stmts.getSetting.get('retention_days').value, '365');
   assert.deepEqual(database.stmts.getAllDevices.all(), []);
-  assert.equal(database.db.pragma('user_version', { simple: true }), 6);
+  assert.equal(database.db.pragma('user_version', { simple: true }), 8);
   assert.deepEqual(
     database.db
       .prepare(
@@ -116,6 +155,8 @@ test('fresh database applies the CE domain baseline exactly once', (t) => {
         applied_at: 123_456,
         checksum_length: 64,
       },
+      { version: 7, name: 'grow_journal_and_network', applied_at: 123_456, checksum_length: 64 },
+      { version: 8, name: 'release_updates', applied_at: 123_456, checksum_length: 64 },
     ],
   );
   assert.deepEqual(
@@ -138,7 +179,7 @@ test('fresh database applies the CE domain baseline exactly once', (t) => {
   database.close();
 
   const reopened = openDatabase(dbPath);
-  assert.deepEqual(reopened.migrationState, { currentVersion: 6, appliedCount: 0 });
+  assert.deepEqual(reopened.migrationState, { currentVersion: 8, appliedCount: 0 });
   reopened.close();
 });
 
@@ -199,6 +240,10 @@ test('runtime statements operate against the CE domain tables', () => {
         taken_at: 1_050,
         temp: 25,
         humidity: 56,
+        temp_min: 24.5,
+        temp_max: 25.5,
+        humidity_min: 55,
+        humidity_max: 57,
         light: 150,
         co2: 900,
         sample_count: 2,
@@ -368,7 +413,7 @@ test('migration checksums are stable across platform line endings', (t) => {
   fs.writeFileSync(migrationPath, fs.readFileSync(migrationPath, 'utf8').replace(/\r?\n/g, '\r\n'));
 
   const reopened = openDatabase(dbPath, { migrationsDir });
-  assert.deepEqual(reopened.migrationState, { currentVersion: 6, appliedCount: 0 });
+  assert.deepEqual(reopened.migrationState, { currentVersion: 8, appliedCount: 0 });
   reopened.close();
 });
 
@@ -399,4 +444,22 @@ test('failed migration rolls back its schema changes and version record', (t) =>
   );
   assert.equal(inspected.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get().count, 0);
   inspected.close();
+});
+
+test('update migration disables legacy unattended installs and preserves journal entries', (t) => {
+  const { applyMigrations } = require('../src/migrations');
+  const migrationsDir = copyMigrations(t);
+  fs.unlinkSync(path.join(migrationsDir, '008_release_updates.sql'));
+  const dbPath = path.join(temporaryDirectory(t), 'growhub.db');
+  const old = new Database(dbPath);
+  applyMigrations(old, { migrationsDir, dbPath });
+  old.prepare('UPDATE command_center_update_state SET auto_install=1').run();
+  const before = old.prepare('SELECT * FROM grow_events').all();
+  old.close();
+  const migrated = openDatabase(dbPath);
+  const row = migrated.db.prepare('SELECT * FROM command_center_update_state').get();
+  assert.equal(row.auto_install, 0);
+  assert.equal(row.checks_enabled, 0);
+  assert.deepEqual(migrated.db.prepare('SELECT * FROM grow_events').all(), before);
+  migrated.close();
 });

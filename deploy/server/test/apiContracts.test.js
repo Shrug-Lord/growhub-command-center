@@ -158,13 +158,16 @@ async function withFixture(callback) {
     update_available: true,
     prompt_available: true,
     dismissed: false,
-    auto_install: false,
+    checks_enabled: false,
     checked_at: '2026-08-06T12:00:00.000Z',
     check_error: null,
     agent: { installed: true, installed_at: '2026-08-06T12:00:00.000Z' },
     install: null,
   };
   const updateService = {
+    status() {
+      return updateStatus;
+    },
     async check() {
       return updateStatus;
     },
@@ -173,11 +176,12 @@ async function withFixture(callback) {
       assert.equal(tag, 'v0.2.0');
       return updateStatus;
     },
-    async setAutoInstall(enabled) {
-      updateStatus = { ...updateStatus, auto_install: enabled, prompt_available: false };
+    async setChecksEnabled(enabled) {
+      updateStatus = { ...updateStatus, checks_enabled: enabled, prompt_available: false };
       return updateStatus;
     },
-    requestInstall(tag) {
+    requestInstall(tag, confirmed) {
+      assert.equal(confirmed, true);
       updateStatus = {
         ...updateStatus,
         prompt_available: false,
@@ -381,6 +385,12 @@ test('history API bounds large ranges with truthful aggregation metadata', async
     assert.ok(result.body.meta.returned_count <= 1_000);
     assert.equal(result.body.meta.aggregated, true);
     assert.equal(result.body.meta.bucket_ms, 604_801);
+    assert.deepEqual(result.body.meta.extrema, {
+      temperature_c: { min: 20, max: 30 },
+      humidity_rh: { min: 50, max: 55 },
+    });
+    assert.equal(result.body.meta.from_ms, now - 7 * 86_400_000);
+    assert.equal(result.body.meta.to_ms, now);
     for (const values of Object.values(result.body.series)) {
       assert.equal(values.length, result.body.meta.returned_count);
     }
@@ -442,14 +452,14 @@ test('mutation APIs return the resource they changed without generic success wra
 
     const automaticUpdates = await request('/api/v1/updates/settings', {
       method: 'PUT',
-      body: JSON.stringify({ auto_install: true }),
+      body: JSON.stringify({ checks_enabled: true }),
     });
     assertOnlyResource(automaticUpdates.body, 'updates');
-    assert.equal(automaticUpdates.body.updates.auto_install, true);
+    assert.equal(automaticUpdates.body.updates.checks_enabled, true);
 
     const installUpdate = await request('/api/v1/updates/install', {
       method: 'POST',
-      body: JSON.stringify({ tag: 'v0.2.0' }),
+      body: JSON.stringify({ tag: 'v0.2.0', confirmed: true }),
     });
     assertOnlyResource(installUpdate.body, 'updates');
     assert.equal(installUpdate.response.status, 202);
@@ -544,5 +554,143 @@ test('mutation APIs return the resource they changed without generic success wra
     assertOnlyResource(deletedSchedule.body, 'template');
 
     assert.ok(published.length >= 2);
+  });
+});
+
+test('history extrema include exact boundaries, ignore nulls, and exclude out-of-window readings', async () => {
+  await withFixture(async ({ database, request }) => {
+    database.db.prepare('DELETE FROM sensor_measurements').run();
+    const from = Date.parse('2026-07-12T12:00:00.000Z');
+    const to = from + 60_000;
+    for (const [taken_at, temp, humidity] of [
+      [from - 1, -99, 1],
+      [from, 20, null],
+      [from + 1, null, 40],
+      [to, 30, 60],
+      [to + 1, 99, 100],
+    ])
+      database.stmts.insertMeasurement.run({
+        device_id: DEVICE_ID,
+        taken_at,
+        temp,
+        humidity,
+        light: null,
+        co2: null,
+        actuator: '0',
+        fw: '1.1.0C',
+      });
+    const range = async (start, end) =>
+      (
+        await request(
+          `/api/v1/data-logs/rangev3?deviceId=${DEVICE_ID}&fromDate=${new Date(start).toISOString()}&toDate=${new Date(end).toISOString()}`,
+        )
+      ).body;
+    const result = await range(from, to);
+    assert.equal(result.meta.source_count, 3);
+    assert.deepEqual(result.meta.extrema, {
+      temperature_c: { min: 20, max: 30 },
+      humidity_rh: { min: 40, max: 60 },
+    });
+    assert.deepEqual((await range(from, from)).meta.extrema, {
+      temperature_c: { min: 20, max: 20 },
+      humidity_rh: { min: null, max: null },
+    });
+    const empty = await range(to + 2, to + 3);
+    assert.equal(empty.meta.source_count, 0);
+    assert.deepEqual(empty.meta.extrema, {
+      temperature_c: { min: null, max: null },
+      humidity_rh: { min: null, max: null },
+    });
+  });
+});
+
+test('grow API preserves timestamps, enforces one active grow, and never publishes device commands', async () => {
+  await withFixture(async ({ request, published }) => {
+    const before = published.length;
+    const start = Date.parse('2026-07-01T12:00:00.123Z');
+    const create = {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Summer', phase: 'Seedling', started_at: start }),
+    };
+    const {
+      body: { grow },
+    } = await request(`/api/v1/devices/${DEVICE_ID}/grows`, create);
+    assert.equal(grow.started_at, start);
+    assert.equal(
+      (await request(`/api/v1/devices/${DEVICE_ID}/grows`, { ...create, allowError: true }))
+        .response.status,
+      409,
+    );
+    const {
+      body: { event },
+    } = await request('/api/v1/events', {
+      method: 'POST',
+      body: JSON.stringify({
+        deviceId: DEVICE_ID,
+        growId: grow.id,
+        type: 'phase_change',
+        phase: 'Harvest',
+        label: 'Harvest',
+        occurredAt: start + 86_400_000,
+      }),
+    });
+    assert.equal((await request(`/api/v1/grows/${grow.id}`)).body.grow.ended_at, null);
+    await request(`/api/v1/grows/${grow.id}/end`, {
+      method: 'POST',
+      body: JSON.stringify({ ended_at: start + 2 * 86_400_000 }),
+    });
+    await request(`/api/v1/events/${event.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ phase: 'Drying' }),
+    });
+    const ended = (await request(`/api/v1/grows/${grow.id}`)).body.grow;
+    assert.equal(ended.phases.at(-1).phase, 'Drying');
+    assert.equal(ended.entries.at(-1).occurred_at, event.occurred_at);
+    assert.equal(ended.ended_at, start + 2 * 86_400_000);
+    assert.equal(published.length, before);
+  });
+});
+
+test('firmware update API rejects stale state and publishes only a confirmed exact release', async () => {
+  await withFixture(async ({ database, published, request }) => {
+    const current = database.stmts.getDevice.get(DEVICE_ID).fw;
+    const state = {
+      v: 1,
+      current_version: current,
+      checks_enabled: false,
+      tag: 'v1.3.0C',
+      available: true,
+      prompt: true,
+      stage: 'idle',
+    };
+    const save = (value) =>
+      database.stmts.recordUpdateState.run(DEVICE_ID, JSON.stringify(value), 1);
+    save({ ...state, current_version: '0.0.0C' });
+    const stale = await request(`/api/v1/devices/${DEVICE_ID}/firmware-update`, {
+      method: 'POST',
+      body: JSON.stringify({ op: 'check' }),
+      allowError: true,
+    });
+    assert.equal(stale.response.status, 409);
+    assert.equal(published.length, 0);
+    save(state);
+    const unconfirmed = await request(`/api/v1/devices/${DEVICE_ID}/firmware-update`, {
+      method: 'POST',
+      body: JSON.stringify({ op: 'install', tag: state.tag }),
+      allowError: true,
+    });
+    assert.equal(unconfirmed.response.status, 409);
+    assert.equal(published.length, 0);
+    const result = await request(`/api/v1/devices/${DEVICE_ID}/firmware-update`, {
+      method: 'POST',
+      body: JSON.stringify({ op: 'install', tag: state.tag, confirmed: true }),
+    });
+    assert.equal(result.response.status, 202);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].topic, `growhub/${DEVICE_ID}/update/action`);
+    const payload = JSON.parse(published[0].payload);
+    assert.equal(payload.tag, state.tag);
+    assert.equal(payload.confirmed, true);
+    assert.equal(payload.id, result.body.id);
   });
 });

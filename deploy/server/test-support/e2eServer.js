@@ -259,13 +259,16 @@ let e2eUpdateStatus = {
   update_available: e2eReleaseAvailable,
   prompt_available: e2eReleaseAvailable,
   dismissed: false,
-  auto_install: false,
+  checks_enabled: false,
   checked_at: '2026-08-06T12:00:00.000Z',
   check_error: null,
   agent: { installed: true, installed_at: '2026-08-06T12:00:00.000Z' },
   install: null,
 };
 const updateService = {
+  status() {
+    return e2eUpdateStatus;
+  },
   async check() {
     return e2eUpdateStatus;
   },
@@ -273,8 +276,8 @@ const updateService = {
     e2eUpdateStatus = { ...e2eUpdateStatus, dismissed: true, prompt_available: false };
     return e2eUpdateStatus;
   },
-  async setAutoInstall(enabled) {
-    e2eUpdateStatus = { ...e2eUpdateStatus, auto_install: enabled, prompt_available: false };
+  async setChecksEnabled(enabled) {
+    e2eUpdateStatus = { ...e2eUpdateStatus, checks_enabled: enabled, prompt_available: false };
     return e2eUpdateStatus;
   },
   requestInstall(tag) {

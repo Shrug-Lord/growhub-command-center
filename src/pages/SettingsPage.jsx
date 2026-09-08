@@ -3,7 +3,7 @@ import {
   getSettings,
   getUpdateStatus,
   installUpdate,
-  setAutomaticUpdates,
+  setUpdateChecks,
   updateSettings,
 } from '../api/piClient.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
@@ -123,6 +123,15 @@ export default function SettingsPage({ onOpenDiagnostics }) {
     }
   }
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      getUpdateStatus()
+        .then(setUpdates)
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [])
+
   async function checkForUpdates() {
     setUpdateBusy('check')
     setUpdateError(null)
@@ -135,11 +144,11 @@ export default function SettingsPage({ onOpenDiagnostics }) {
     }
   }
 
-  async function changeAutomaticUpdates(enabled) {
+  async function changeUpdateChecks(enabled) {
     setUpdateBusy('settings')
     setUpdateError(null)
     try {
-      setUpdates(await setAutomaticUpdates({ enabled }))
+      setUpdates(await setUpdateChecks({ enabled }))
     } catch (requestError) {
       setUpdateError(requestError.message)
     } finally {
@@ -148,10 +157,16 @@ export default function SettingsPage({ onOpenDiagnostics }) {
   }
 
   async function startUpdate() {
+    if (
+      !window.confirm(
+        `Install Command Center ${updates.latest_release.tag}? A backup will be created. The dashboard and logging will pause during restart; controllers keep operating.`,
+      )
+    )
+      return
     setUpdateBusy('install')
     setUpdateError(null)
     try {
-      setUpdates(await installUpdate({ tag: updates.latest_release.tag }))
+      setUpdates(await installUpdate({ tag: updates.latest_release.tag, confirmed: true }))
     } catch (requestError) {
       setUpdateError(requestError.message)
     } finally {
@@ -346,13 +361,21 @@ export default function SettingsPage({ onOpenDiagnostics }) {
 
         {updates &&
           !updates.agent?.installed &&
-          (updates.update_available || updates.auto_install) && (
+          (updates.update_available || updates.checks_enabled) && (
             <div className="border-l-2 border-amber-500 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
-              <p className="font-medium">One-time Pi setup required</p>
-              <p className="mt-1 text-amber-200/80">From the Command Center checkout, run:</p>
+              <p className="font-medium">
+                One-click installation requires the Linux/Pi host service
+              </p>
+              <p className="mt-1 text-amber-200/80">
+                On Linux/Pi, from the Command Center checkout, run:
+              </p>
               <code className="mt-1 block overflow-x-auto whitespace-nowrap rounded bg-gray-950 px-2 py-1.5 text-gray-200">
                 sudo &quot;$(command -v node)&quot; scripts/install-update-agent.js
               </code>
+              <p className="mt-2">
+                On Windows/macOS, use npm run compose:update -- --release{' '}
+                {updates.latest_release?.tag ?? 'vX.Y.Z'} from a clean checkout.
+              </p>
             </div>
           )}
 
@@ -374,15 +397,16 @@ export default function SettingsPage({ onOpenDiagnostics }) {
         <label className="flex items-start gap-2 text-sm text-gray-300">
           <input
             type="checkbox"
-            checked={updates?.auto_install ?? false}
+            checked={updates?.checks_enabled ?? false}
             disabled={!updates || updateBusy !== null}
-            onChange={(event) => void changeAutomaticUpdates(event.target.checked)}
+            onChange={(event) => void changeUpdateChecks(event.target.checked)}
             className="mt-0.5 accent-green-600"
           />
           <span>
-            Install verified tagged releases automatically
+            Check for updates every six hours
             <span className="mt-0.5 block text-xs text-gray-500">
-              Creates a backup before updating and never installs ordinary main-branch commits.
+              Checks after startup and every six hours. Installation always requires your
+              confirmation.
             </span>
           </span>
         </label>
@@ -397,6 +421,16 @@ export default function SettingsPage({ onOpenDiagnostics }) {
             <RefreshCw className={`h-4 w-4 ${updateBusy === 'check' ? 'animate-spin' : ''}`} />
             Check now
           </button>
+          {updates?.latest_release?.url && (
+            <a
+              className="px-3 py-2 text-sm text-green-300 underline"
+              href={updates.latest_release.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Release notes
+            </a>
+          )}
           {updates?.update_available && (
             <button
               type="button"

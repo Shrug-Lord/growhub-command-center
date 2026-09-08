@@ -6,6 +6,7 @@ const { acquireAppDataLock } = require('./appDataLock');
 const { createAuthSystem, SWEEP_INTERVAL_MS } = require('./auth');
 const { ConfigurationError, loadConfig } = require('./config');
 const { openDatabase } = require('./db');
+const { createGrowJournal } = require('./growJournal');
 const { createDeviceActionEngine, DeviceActionError } = require('./deviceActions');
 const { createDiagnosticsService } = require('./diagnostics');
 const { formatDevice, formatServerHealth } = require('./deviceView');
@@ -49,6 +50,11 @@ function createApp({
   authSystem: suppliedAuthSystem,
 }) {
   const { db, stmts } = database;
+  let journal;
+  function getJournalService() {
+    journal ??= createGrowJournal({ database, clock });
+    return journal;
+  }
   const authSystem = suppliedAuthSystem || createAuthSystem({ database, config, clock });
   const diagnosticsService =
     suppliedDiagnosticsService ||
@@ -138,12 +144,16 @@ function createApp({
   const requireWriteAuth = [authSystem.requireAuth, authSystem.requireCsrf];
 
   function formatDeviceSummary(device) {
-    return formatDevice(device, {
-      stmts,
-      mqttService,
-      actionEngine,
-      scheduleService,
-    });
+    return {
+      ...formatDevice(device, {
+        stmts,
+        mqttService,
+        actionEngine,
+        scheduleService,
+      }),
+      grow_prompts: getJournalService().prompts(device.id),
+      active_grow: getJournalService().active(device.id),
+    };
   }
 
   function sendDeviceActionError(req, res, error) {
@@ -265,7 +275,10 @@ function createApp({
       if (!updateService) {
         return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
       }
-      const updates = await updateService.check({ force: req.query.check === '1' });
+      const updates =
+        req.query.check === '1'
+          ? await updateService.check({ force: true })
+          : updateService.status();
       return res.json({ updates });
     }),
   );
@@ -275,7 +288,7 @@ function createApp({
       return sendError(req, res, 503, 'update_service_unavailable', 'Updates are unavailable.');
     }
     try {
-      return res.json({ updates: updateService.dismiss(req.body?.tag) });
+      return res.json({ updates: updateService.dismiss(req.body?.tag, req.body?.mode) });
     } catch (error) {
       return sendReleaseUpdateError(req, res, error);
     }
@@ -290,7 +303,7 @@ function createApp({
       }
       try {
         return res.json({
-          updates: await updateService.setAutoInstall(req.body?.auto_install),
+          updates: await updateService.setChecksEnabled(req.body?.checks_enabled),
         });
       } catch (error) {
         return sendReleaseUpdateError(req, res, error);
@@ -304,12 +317,71 @@ function createApp({
     }
     try {
       return res.status(202).json({
-        updates: updateService.requestInstall(req.body?.tag),
+        updates: updateService.requestInstall(req.body?.tag, req.body?.confirmed),
       });
     } catch (error) {
       return sendReleaseUpdateError(req, res, error);
     }
   });
+
+  app.post(
+    '/api/v1/devices/:id/firmware-update',
+    ...requireWriteAuth,
+    asyncHandler(async (req, res) => {
+      const device = stmts.getDevice.get(req.params.id);
+      if (!device) return sendError(req, res, 404, 'device_not_found', 'Device not found.');
+      const row = stmts.getUpdateState.get(device.id);
+      const view = formatDevice(device, { stmts, mqttService, actionEngine, scheduleService });
+      if (!mqttService?.isConnected?.() || !view.presence.online || !view.mirror.ready)
+        return sendError(
+          req,
+          res,
+          409,
+          'device_unavailable',
+          'Wait for the device and broker to reconnect.',
+        );
+      if (row && JSON.parse(row.state_json).current_version !== device.fw)
+        return sendError(
+          req,
+          res,
+          409,
+          'stale_update_state',
+          'Wait for update state from the currently installed firmware.',
+        );
+      let action;
+      try {
+        action = require('./firmwareUpdates').prepareUpdateAction(
+          req.body,
+          row ? JSON.parse(row.state_json) : null,
+        );
+      } catch (error) {
+        return sendError(req, res, 409, 'invalid_update_action', error.message);
+      }
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            reject(
+              new Error('MQTT acknowledgement timed out; check device status before retrying.'),
+            ),
+          5000,
+        );
+        try {
+          mqttService.publishAction(
+            `growhub/${device.id}/update/action`,
+            JSON.stringify(action),
+            (error) => {
+              clearTimeout(timer);
+              error ? reject(error) : resolve();
+            },
+          );
+        } catch (error) {
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+      return res.status(202).json({ accepted: true, id: action.id });
+    }),
+  );
 
   // ── Read-only diagnostics ────────────────────────────────────────────────────
 
@@ -369,11 +441,27 @@ function createApp({
     });
     const series = { temp: [], rh: [], light: [], co2: [], vpd: [], dewPoint: [] };
     let sourceCount = 0;
+    const extrema = {
+      temperature_c: { min: null, max: null },
+      humidity_rh: { min: null, max: null },
+    };
     for (const row of rows) {
       const ts = row.taken_at,
         t = row.temp ?? 0,
         rh = row.humidity ?? 0;
       sourceCount += row.sample_count;
+      for (const [key, prefix] of [
+        ['temperature_c', 'temp'],
+        ['humidity_rh', 'humidity'],
+      ]) {
+        for (const bound of ['min', 'max']) {
+          const value = row[prefix + '_' + bound];
+          if (value !== null && Number.isFinite(value)) {
+            const old = extrema[key][bound];
+            extrema[key][bound] = old === null ? value : Math[bound](old, value);
+          }
+        }
+      }
       series.temp.push([ts, t]);
       series.rh.push([ts, rh]);
       series.light.push([ts, row.light ?? 0]);
@@ -388,6 +476,9 @@ function createApp({
         returned_count: rows.length,
         aggregated: sourceCount > rows.length,
         bucket_ms: bucketMs,
+        from_ms: fromMs,
+        to_ms: toMs,
+        extrema,
       },
     });
   });
@@ -609,74 +700,100 @@ function createApp({
 
   // ── Events ────────────────────────────────────────────────────────────────────
 
-  function formatEvent(e) {
-    return {
-      id: e.id,
-      device_id: e.device_id,
-      schedule_id: e.schedule_id,
-      type: e.type,
-      phase: e.phase,
-      label: e.label,
-      notes: e.notes,
-      occurred_at: e.occurred_at,
-      created_at: e.created_at,
+  function journalRoute(handler) {
+    return (req, res) => {
+      try {
+        return handler(req, res);
+      } catch (error) {
+        return sendDeviceActionError(req, res, error);
+      }
     };
   }
+  app.get(
+    '/api/v1/devices/:deviceId/journal',
+    requireAuth,
+    journalRoute((req, res) =>
+      res.json({ journal: getJournalService().overview(req.params.deviceId) }),
+    ),
+  );
+  app.post(
+    '/api/v1/devices/:deviceId/grows',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res
+        .status(201)
+        .json({ grow: getJournalService().start(req.params.deviceId, req.body || {}) }),
+    ),
+  );
+  app.get(
+    '/api/v1/grows/:id',
+    requireAuth,
+    journalRoute((req, res) => res.json({ grow: getJournalService().detail(req.params.id) })),
+  );
+  app.post(
+    '/api/v1/grows/:id/end',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res.json({ grow: getJournalService().end(req.params.id, req.body || {}) }),
+    ),
+  );
+  app.post(
+    '/api/v1/grows/:id/assign',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res.json({ grow: getJournalService().assign(req.params.id, req.body || {}) }),
+    ),
+  );
+  app.post(
+    '/api/v1/devices/:deviceId/grow-prompts/:actionId/dismiss',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res.json({ prompt: getJournalService().dismiss(req.params.deviceId, req.params.actionId) }),
+    ),
+  );
 
-  app.get('/api/v1/events', requireAuth, (req, res) => {
-    const { deviceId } = req.query;
-    if (!deviceId) return sendError(req, res, 400, 'invalid_request', 'deviceId is required.');
-    return res.json({ events: stmts.getEvents.all(deviceId).map(formatEvent) });
-  });
-
-  app.post('/api/v1/events', ...requireWriteAuth, (req, res) => {
-    const { deviceId, scheduleId, type, phase, label, notes, occurredAt } = req.body || {};
-    if (!type || !label) {
-      return sendError(req, res, 400, 'invalid_request', 'type and label are required.');
-    }
-    const now = clock();
-    const info = stmts.insertEvent.run({
-      device_id: deviceId ?? null,
-      schedule_id: scheduleId ?? null,
-      type,
-      phase: phase ?? null,
-      label,
-      notes: notes ?? null,
-      occurred_at: occurredAt ?? now,
-      created_at: now,
-    });
-    return res.status(201).json({ event: formatEvent(stmts.getEvent.get(info.lastInsertRowid)) });
-  });
-
-  app.patch('/api/v1/events/:id', ...requireWriteAuth, (req, res) => {
-    const event = stmts.getEvent.get(req.params.id);
-    if (!event) return sendError(req, res, 404, 'event_not_found', 'Event not found.');
-    const { label, notes, occurredAt } = req.body || {};
-    stmts.updateEvent.run({
-      id: event.id,
-      label: label ?? event.label,
-      notes: notes ?? event.notes,
-      occurred_at: occurredAt ?? event.occurred_at,
-    });
-    return res.json({ event: formatEvent(stmts.getEvent.get(event.id)) });
-  });
-
-  app.delete('/api/v1/events/:id', ...requireWriteAuth, (req, res) => {
-    const event = stmts.getEvent.get(req.params.id);
-    if (!event) return sendError(req, res, 404, 'event_not_found', 'Event not found.');
-    const r = stmts.deleteEvent.run(req.params.id);
-    if (r.changes === 0) {
-      return sendError(req, res, 403, 'event_protected', 'System events cannot be deleted.');
-    }
-    return res.json({ event: { id: event.id, deleted: true } });
-  });
-
-  app.get('/api/v1/events/phase/current', requireAuth, (req, res) => {
-    const { deviceId } = req.query;
-    if (!deviceId) return sendError(req, res, 400, 'invalid_request', 'deviceId is required.');
-    const row = stmts.getCurrentPhase.get(deviceId);
-    return res.json({ current_phase: { device_id: deviceId, phase: row?.phase ?? null } });
-  });
+  app.get(
+    '/api/v1/events',
+    requireAuth,
+    journalRoute((req, res) => {
+      const overview = getJournalService().overview(req.query.deviceId);
+      const events = overview.grows
+        .flatMap((grow) => getJournalService().detail(grow.id).entries)
+        .concat(overview.unassigned);
+      return res.json({
+        events: events.sort((a, b) => b.occurred_at - a.occurred_at || b.id - a.id),
+      });
+    }),
+  );
+  app.post(
+    '/api/v1/events',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res.status(201).json({ event: getJournalService().createEntry(req.body || {}) }),
+    ),
+  );
+  app.patch(
+    '/api/v1/events/:id',
+    ...requireWriteAuth,
+    journalRoute((req, res) =>
+      res.json({ event: getJournalService().editEntry(req.params.id, req.body || {}) }),
+    ),
+  );
+  app.delete(
+    '/api/v1/events/:id',
+    ...requireWriteAuth,
+    journalRoute((req, res) => res.json({ event: getJournalService().deleteEntry(req.params.id) })),
+  );
+  app.get(
+    '/api/v1/events/phase/current',
+    requireAuth,
+    journalRoute((req, res) => {
+      const overview = getJournalService().overview(req.query.deviceId);
+      const active = overview.grows.find((grow) => grow.ended_at === null);
+      const phase = active ? getJournalService().detail(active.id).phases.at(-1)?.phase : null;
+      return res.json({ current_phase: { device_id: req.query.deviceId, phase: phase ?? null } });
+    }),
+  );
 
   // ── Settings ──────────────────────────────────────────────────────────────────
 
