@@ -23,14 +23,14 @@ For the current candidate use `RELEASE-v0.2.0.md` and `RELEASE_TAG=v0.2.0`.
        npm run verify
        npm run test:e2e
        npm run security:signatures
-       RELEASE_TAG=v0.1.0 npm run release:validate
+       RELEASE_TAG=v0.2.0 npm run release:validate
        npm run compose:config
        npm run compose:build
 
 6. Commit from a clean checkout and create the matching tag:
 
-       git tag -a v0.1.0 -m "Growhub Command Center v0.1.0"
-       git push origin main v0.1.0
+       git tag -a v0.2.0 -m "Growhub Command Center v0.2.0"
+       git push origin main v0.2.0
 
 ## Published Artifacts
 
@@ -51,7 +51,7 @@ Verify a downloaded source archive with:
 
 Verify GitHub provenance with:
 
-    gh attestation verify growhub-command-center-0.1.0.tar.gz --repo Shrug-Lord/growhub-command-center
+    gh attestation verify growhub-command-center-0.2.0.tar.gz --repo Shrug-Lord/growhub-command-center
 
 The release notes must identify the tested CE firmware version and link to the
 completed hardware, host, and accessibility evidence files.

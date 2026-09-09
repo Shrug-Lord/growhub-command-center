@@ -2,7 +2,7 @@
 
 All notable changes will be documented here.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-09-09
 
 - Refresh sensor history on polling and show selected-period extrema/ranges.
 - Add collapsible sections, expanded grow journaling and phase durations, and
